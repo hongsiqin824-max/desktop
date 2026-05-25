@@ -1,0 +1,276 @@
+/* 经脉3D交互组件样式 */
+/* 科技风半透明主题，深色背景+发光经脉线条 */
+
+/* ── 3D场景容器 ─────────────────────────────────────────────── */
+.meridian-body-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: linear-gradient(180deg, var(--meridian-scene-bg) 0%, var(--meridian-scene-bg-gradient) 100%);
+  overflow: hidden;
+}
+
+.meridian-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── 加载中状态 ─────────────────────────────────────────────── */
+.meridian-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  z-index: 10;
+}
+
+.meridian-loading-spinner {
+  width: 64px;
+  height: 64px;
+  border: 4px solid var(--meridian-btn-border);
+  border-top-color: var(--meridian-panel-title);
+  border-radius: 50%;
+  animation: meridianSpin 1s linear infinite;
+}
+
+@keyframes meridianSpin {
+  to { transform: rotate(360deg); }
+}
+
+.meridian-loading-text {
+  font-size: 28px;
+  color: var(--meridian-panel-text);
+}
+
+/* ── 悬停提示浮层 ───────────────────────────────────────────── */
+.meridian-tooltip {
+  position: absolute;
+  padding: 12px 24px;
+  background: var(--meridian-panel-bg);
+  border: 1px solid var(--meridian-panel-border);
+  border-radius: 12px;
+  color: var(--meridian-panel-title);
+  font-size: 28px;
+  font-weight: bold;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+  animation: meridianFadeIn 0.2s ease;
+}
+
+@keyframes meridianFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 视角切换按钮组 ─────────────────────────────────────────── */
+.view-angle-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 15;
+}
+
+.view-angle-btn {
+  height: 64px;
+  padding: 0 32px;
+  background: var(--meridian-btn-bg);
+  border: 2px solid var(--meridian-btn-border);
+  border-radius: 32px;
+  color: var(--meridian-btn-text);
+  font-size: 26px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.view-angle-btn:active {
+  background: var(--meridian-btn-active-bg);
+  border-color: var(--meridian-btn-active-border);
+  color: var(--meridian-btn-active-text);
+  transform: scale(0.95);
+}
+
+.view-angle-btn.active {
+  background: var(--meridian-btn-active-bg);
+  border-color: var(--meridian-btn-active-border);
+  color: var(--meridian-btn-active-text);
+}
+
+/* ── 经络信息面板 ───────────────────────────────────────────── */
+.meridian-info-panel {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 420px;
+  max-height: calc(100% - 120px);
+  background: var(--meridian-panel-bg);
+  border: 1px solid var(--meridian-panel-border);
+  border-radius: 20px;
+  padding: 32px;
+  z-index: 15;
+  overflow-y: auto;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--meridian-panel-shadow);
+  animation: meridianSlideIn 0.3s ease;
+}
+
+@keyframes meridianSlideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.meridian-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--meridian-panel-border);
+}
+
+.meridian-panel-name {
+  font-size: 36px;
+  font-weight: bold;
+  color: var(--meridian-panel-title);
+}
+
+.meridian-panel-code {
+  font-size: 24px;
+  color: var(--meridian-panel-accent);
+  background: rgba(255, 215, 0, 0.10);
+  padding: 4px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 215, 0, 0.30);
+}
+
+.meridian-panel-close {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--meridian-panel-border);
+  color: var(--meridian-panel-sub);
+  font-size: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.meridian-panel-close:active {
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--meridian-panel-text);
+}
+
+.meridian-panel-section {
+  margin-bottom: 24px;
+}
+
+.meridian-panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.meridian-panel-label {
+  font-size: 24px;
+  color: var(--meridian-panel-sub);
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.meridian-panel-value {
+  font-size: 28px;
+  color: var(--meridian-panel-text);
+  line-height: 1.6;
+}
+
+.meridian-panel-pathway {
+  font-size: 26px;
+  color: var(--meridian-panel-text);
+  line-height: 1.7;
+  background: rgba(56, 139, 253, 0.06);
+  padding: 16px 20px;
+  border-radius: 12px;
+  border-left: 4px solid var(--meridian-panel-title);
+}
+
+.meridian-panel-acupoints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.meridian-panel-acupoint-tag {
+  padding: 8px 18px;
+  background: rgba(255, 215, 0, 0.08);
+  border: 1px solid rgba(255, 215, 0, 0.20);
+  border-radius: 20px;
+  color: var(--meridian-panel-accent);
+  font-size: 24px;
+}
+
+/* ── 已记录经脉指示器 ───────────────────────────────────────── */
+.recorded-meridians {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 15;
+}
+
+.recorded-meridian-tag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: var(--meridian-recorded-bg);
+  border: 1px solid var(--meridian-recorded-border);
+  border-radius: 20px;
+  color: var(--meridian-recorded-text);
+  font-size: 24px;
+  font-weight: bold;
+  animation: meridianFadeIn 0.3s ease;
+}
+
+.recorded-meridian-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--meridian-recorded-border);
+  animation: meridianPulse 2s ease-in-out infinite;
+}
+
+@keyframes meridianPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── 操作提示文字 ───────────────────────────────────────────── */
+.meridian-hint {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 32px;
+  background: rgba(22, 27, 34, 0.80);
+  border: 1px solid var(--meridian-btn-border);
+  border-radius: 24px;
+  color: var(--meridian-panel-sub);
+  font-size: 24px;
+  z-index: 15;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  animation: meridianFadeIn 0.5s ease;
+}

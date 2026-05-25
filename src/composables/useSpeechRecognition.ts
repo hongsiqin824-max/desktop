@@ -25,12 +25,16 @@ export function useSpeechRecognition() {
   let workletNode: AudioWorkletNode | null = null
   let sendTimer: number | null = null
   let fallbackTimer: number | null = null
+  let audioActivityTimer: number | null = null
+  let hasAudioActivity = false
   let pcmChunks: Int16Array[] = []
   let finalText = ''
   let interimText = ''
   let resolveStop: ((text: string) => void) | null = null
   let stopping = false
   let sessionReady = false
+  let responseDone = false
+  let transcriptionDone = false
 
   const TARGET_SAMPLE_RATE = 16000
   const SEND_INTERVAL_MS = 100
@@ -153,6 +157,8 @@ export function useSpeechRecognition() {
   const release = () => {
     if (sendTimer) { clearInterval(sendTimer); sendTimer = null }
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
+    if (audioActivityTimer) { clearTimeout(audioActivityTimer); audioActivityTimer = null }
+    hasAudioActivity = false
     if (processor) { processor.disconnect(); processor.onaudioprocess = null; processor = null }
     if (workletNode) { workletNode.disconnect(); workletNode.port.onmessage = null; workletNode = null }
     if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
@@ -169,9 +175,12 @@ export function useSpeechRecognition() {
     agcPeak = 0
     stopping = false
     sessionReady = false
+    responseDone = false
+    transcriptionDone = false
   }
 
   const finish = (text: string) => {
+    console.log('[ASR] finish called with:', JSON.stringify(text))
     release()
     transcript.value = text
     status.value = 'idle'
@@ -188,6 +197,7 @@ export function useSpeechRecognition() {
   const sendAudioChunk = (merged: Int16Array) => {
     if (!ws || ws.readyState !== WebSocket.OPEN || !sessionReady) return
     const base64 = audioBufferToBase64(merged)
+    console.log('[ASR] sendAudioChunk:', merged.length, 'samples,', base64.length, 'bytes base64')
     ws.send(JSON.stringify({
       type: 'input_audio_buffer.append',
       audio: base64,
@@ -201,6 +211,9 @@ export function useSpeechRecognition() {
       resolve('')
       return
     }
+
+    // 防御性清理：确保上次会话完全结束
+    release()
 
     finalText = ''
     interimText = ''
@@ -232,6 +245,8 @@ export function useSpeechRecognition() {
 
     try {
       audioContext = new AudioContext()
+      await audioContext.resume()
+      console.log('[ASR] AudioContext state after resume:', audioContext.state)
       sourceNode = audioContext.createMediaStreamSource(mediaStream!)
       const srcRate = audioContext.sampleRate
 
@@ -275,6 +290,7 @@ export function useSpeechRecognition() {
 
       // ── WebSocket 连接建立 → 发送 session.update 配置 ──
       ws.onopen = () => {
+        console.log('[ASR] ws.onopen, sending session.update')
         ws!.send(JSON.stringify({
           type: 'session.update',
           session: {
@@ -291,14 +307,19 @@ export function useSpeechRecognition() {
 
       // ── 接收 Realtime API 服务端事件 ──
       ws.onmessage = (ev) => {
-        if (typeof ev.data !== 'string') return
+        if (typeof ev.data !== 'string') {
+          console.log('[ASR] event (binary):', ev.data.byteLength, 'bytes')
+          return
+        }
         try {
           const event = JSON.parse(ev.data)
+          console.log('[ASR] event:', event.type, event.type === 'error' ? JSON.stringify(event) : '')
 
           switch (event.type) {
             case 'session.created':
               sessionReady = true
               status.value = 'listening'
+              console.log('[ASR] session.created, hasAudioActivity:', hasAudioActivity)
 
               if (workletNode) {
                 workletNode.port.postMessage({ type: 'start' })
@@ -307,50 +328,80 @@ export function useSpeechRecognition() {
               // 定时发送音频块
               sendTimer = window.setInterval(() => {
                 if (pcmChunks.length > 0 && ws?.readyState === WebSocket.OPEN && sessionReady) {
+                  hasAudioActivity = true
                   const merged = mergePcm(pcmChunks)
                   pcmChunks = []
                   sendAudioChunk(merged)
                 }
               }, SEND_INTERVAL_MS)
+
+              // 防御性检查：2秒后如果还没收到任何音频，说明 AudioContext 未正常工作
+              audioActivityTimer = window.setTimeout(() => {
+                console.log('[ASR] 2s audio check, hasAudioActivity:', hasAudioActivity)
+                if (!hasAudioActivity && status.value === 'listening' && !stopping) {
+                  errorMessage.value = '麦克风未正常工作，请重新点击录音'
+                  status.value = 'error'
+                  release()
+                  resolveStop?.('')
+                  resolveStop = null
+                }
+              }, 2000)
               break
 
             // 实时转写预览（流式增量）
             case 'conversation.item.input_audio_transcription.delta':
               interimText = (event.text || '') + (event.stash || '')
               transcript.value = finalText + interimText
+              console.log('[ASR] delta:', JSON.stringify({ text: event.text, stash: event.stash, interimText }))
               break
 
-            // 转写完成
+            // 转写完成 → 标记并尝试结束
             case 'conversation.item.input_audio_transcription.completed':
+              console.log('[ASR] transcription.completed:', JSON.stringify({ transcript: event.transcript, finalTextBefore: finalText }))
               if (event.transcript) {
                 finalText += event.transcript
                 interimText = ''
                 transcript.value = finalText
               }
+              transcriptionDone = true
+              console.log('[ASR] transcriptionDone=true, stopping:', stopping, 'responseDone:', responseDone, 'finalText:', JSON.stringify(finalText))
+              if (stopping && responseDone) {
+                console.log('[ASR] finish from transcription.completed, text:', JSON.stringify(finalText.trim()))
+                finish(finalText.trim() || '未检测到语音，请再试一次')
+              }
               break
 
             // 模型回复（response.text.*）已忽略：只用 ASR 转写结果，避免模型复述导致重复
 
-            // 回复完成 → 结束识别
+            // 回复完成 → 标记并尝试结束（需等 transcription.completed 也到达）
             case 'response.done': {
-              if (stopping) {
+              console.log('[ASR] response.done, stopping:', stopping, 'transcriptionDone:', transcriptionDone, 'finalText:', JSON.stringify(finalText), 'interimText:', JSON.stringify(interimText))
+              responseDone = true
+              if (stopping && transcriptionDone) {
+                console.log('[ASR] finish from response.done, text:', JSON.stringify(finalText.trim()))
                 finish(finalText.trim() || '未检测到语音，请再试一次')
               }
               break
             }
 
             case 'error':
+              console.error('[ASR] error event:', JSON.stringify(event))
               errorMessage.value = `识别服务错误: ${event.error?.message || '未知错误'}`
               status.value = 'error'
               release()
               resolveStop?.('')
               resolveStop = null
               break
+
+            default:
+              console.log('[ASR] unhandled event:', event.type)
+              break
           }
         } catch { /* 忽略 JSON 解析异常 */ }
       }
 
-      ws.onerror = () => {
+      ws.onerror = (ev) => {
+        console.error('[ASR] ws.onerror:', ev)
         errorMessage.value = '语音识别服务连接失败，请检查网络或服务配置'
         status.value = 'error'
         release()
@@ -358,7 +409,8 @@ export function useSpeechRecognition() {
         resolveStop = null
       }
 
-      ws.onclose = () => {
+      ws.onclose = (ev: CloseEvent) => {
+        console.log('[ASR] ws.onclose, code:', ev.code, 'reason:', ev.reason, 'wasClean:', ev.wasClean, 'status:', status.value, 'stopping:', stopping, 'finalText:', JSON.stringify(finalText), 'interimText:', JSON.stringify(interimText), 'hasAudioActivity:', hasAudioActivity)
         if (status.value === 'listening') {
           const text = (finalText + interimText).trim()
           if (text) {
@@ -385,38 +437,75 @@ export function useSpeechRecognition() {
 
   // ── 停止录音：发送剩余音频 → commit → response.create ──
   const stop = () => {
+    console.log('[ASR] stop() called, ws:', !!ws, 'audioContext:', !!audioContext, 'finalText:', JSON.stringify(finalText), 'interimText:', JSON.stringify(interimText), 'hasAudioActivity:', hasAudioActivity)
     if (!ws && !audioContext) {
       finish(finalText.trim())
       return
     }
 
     stopping = true
+    responseDone = false
+    transcriptionDone = false
+    // 停止时已不需要音频活跃检测
+    if (audioActivityTimer) { clearTimeout(audioActivityTimer); audioActivityTimer = null }
 
-    // 清理音频节点
-    if (workletNode) { workletNode.port.postMessage({ type: 'stop' }); workletNode.disconnect(); workletNode = null }
-    if (processor) { processor.disconnect(); processor.onaudioprocess = null; processor = null }
-    if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
-    if (sendTimer) { clearInterval(sendTimer); sendTimer = null }
+    // 等待 worklet flush 完毕后再断开并发送 commit
+    let committed = false
+    const commitAndRequest = () => {
+      if (committed) return
+      committed = true
+      console.log('[ASR] commitAndRequest, pcmChunks remaining:', pcmChunks.length, 'finalText:', JSON.stringify(finalText), 'interimText:', JSON.stringify(interimText))
+      if (processor) { processor.disconnect(); processor.onaudioprocess = null; processor = null }
+      if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
+      if (sendTimer) { clearInterval(sendTimer); sendTimer = null }
 
-    // 发送剩余音频 + commit + 请求回复
-    if (ws?.readyState === WebSocket.OPEN && sessionReady) {
-      const merged = mergePcm(pcmChunks)
-      pcmChunks = []
-      if (merged.length > 0) {
-        sendAudioChunk(merged)
+      // 发送最后一批残留音频
+      if (ws?.readyState === WebSocket.OPEN && sessionReady) {
+        const merged = mergePcm(pcmChunks)
+        pcmChunks = []
+        if (merged.length > 0) sendAudioChunk(merged)
+        ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }))
+        ws.send(JSON.stringify({ type: 'response.create' }))
       }
-      // 提交音频缓冲区
-      ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }))
-      // 请求模型生成回复（触发转录完成）
-      ws.send(JSON.stringify({ type: 'response.create' }))
+
+      // 超时兜底：5秒后若两个完成信号未全部到达，强制结束（利用 interimText 防止空结果）
+      fallbackTimer = window.setTimeout(() => {
+        if (stopping) {
+          console.log('[ASR] fallbackTimer fired, finalText:', JSON.stringify(finalText), 'interimText:', JSON.stringify(interimText))
+          finish((finalText || interimText).trim())
+        }
+      }, 5000)
     }
 
-    // 超时兜底：3秒后若未收到 response.done，强制结束
-    fallbackTimer = window.setTimeout(() => {
-      if (stopping) {
-        finish((finalText + interimText).trim())
+    if (workletNode) {
+      // 保存原 onmessage，等待 flushed 事件后再断开
+      const origHandler = workletNode.port.onmessage
+      workletNode.port.onmessage = (e: MessageEvent) => {
+        // 继续收集 flush 期间产生的 PCM 数据
+        if (e.data.type === 'pcm' && status.value === 'listening') {
+          pcmChunks.push(e.data.data)
+        }
+        if (e.data.type === 'flushed') {
+          console.log('[ASR] worklet flushed received')
+          workletNode!.port.onmessage = origHandler
+          try { workletNode!.disconnect() } catch {}
+          workletNode = null
+          commitAndRequest()
+        }
       }
-    }, 3000)
+      workletNode.port.postMessage({ type: 'stop' })
+      // 安全兜底：如果 worklet 在 200ms 内没有回复 flushed，强制继续
+      setTimeout(() => {
+        if (workletNode) {
+          console.log('[ASR] worklet flush TIMEOUT, forcing disconnect')
+          try { workletNode.disconnect() } catch {}
+          workletNode = null
+          commitAndRequest()
+        }
+      }, 200)
+    } else {
+      commitAndRequest()
+    }
   }
 
   const getCurrentTranscript = () => transcript.value

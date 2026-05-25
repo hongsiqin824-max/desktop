@@ -17,9 +17,12 @@
     "lint:eslint": "eslint . --fix --cache"
   },
   "dependencies": {
+    "@tresjs/cientos": "^5.7.1",
+    "@tresjs/core": "^5.8.1",
     "echarts": "^6.0.0",
     "element-plus": "^2.14.0",
     "pinia": "^3.0.4",
+    "three": "^0.184.0",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4",
     "ws": "^8.20.1"
@@ -27,6 +30,7 @@
   "devDependencies": {
     "@tsconfig/node20": "^20.1.4",
     "@types/node": "^20.17.6",
+    "@types/three": "^0.184.1",
     "@vitejs/plugin-basic-ssl": "^1.1.0",
     "@vitejs/plugin-vue": "^5.1.4",
     "@vue/eslint-config-typescript": "^14.1.3",

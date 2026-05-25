@@ -63,7 +63,7 @@ export interface IFlowStep {
 // ── 详细问诊类型 ──────────────────────────────────────────────
 export interface IDetailQuestionOption {
   label: string
-  taCode: string
+  taCode?: string
   semanticDesc?: string
   severityQuestion?: IDetailSeverityQuestion
   followUpQuestions?: string[]
@@ -74,6 +74,7 @@ export interface IDetailSeverityQuestion {
   subjectText: string
   lighterCode: string
   heavierCode: string
+  followUpQuestions?: string[]
 }
 
 export interface IDetailSeverityPending {
@@ -83,6 +84,7 @@ export interface IDetailSeverityPending {
   parentLabel: string
   parentCategory: string
   isFirstQuestion: boolean
+  followUpQuestions?: string[]
 }
 
 export interface IDetailQuestion {
@@ -173,10 +175,14 @@ export interface ISelfFeatureRecord {
   symptomBaseCode: string
   severity: 1 | 2
   fixedTaCode?: string
+  /** 经脉编号（经脉模式），如 JM1、JM2 等 */
+  meridianCode?: string
+  /** 经脉名称（经脉模式），如"肺经" */
+  meridianName?: string
 }
 
 // ── 自选特征子步骤类型 ──────────────────────────────────────────
-export type SelfFeatureSubStepType = 'location' | 'nature' | 'nature_expand' | 'severity' | 'continue'
+export type SelfFeatureSubStepType = 'meridian' | 'location' | 'nature' | 'nature_expand' | 'severity' | 'continue'
 
 // ── 舌脉分析数据接口 ──────────────────────────────────────────
 export interface IAnalysisData {
@@ -226,6 +232,8 @@ export interface IStepSnapshot {
   selfFeatureCurrentSymptomCategory: 'K' | 'X' | 'P'
   selfFeatureCurrentSymptomBaseCode: string
   selfFeatureCurrentSymptomFixedTaCode: string | undefined
+  selfFeatureCurrentMeridianCode: string
+  selfFeatureCurrentMeridianName: string
   selfFeatureExpandKey: string
   analysisData: IAnalysisData | null
   syndromeOutputData: ISyndromeOutput | null

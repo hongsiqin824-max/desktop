@@ -1,8 +1,11 @@
-// 自选特征逻辑组合式函数：部位选择→症状性质→程度→继续添加 子步骤流转
+// 自选特征逻辑组合式函数：经脉选择→症状性质→程度→继续添加 子步骤流转
+// 支持经脉模式（3D人体模型点击经脉）和部位模式（传统文字选择）
 import { ref, computed } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type { StepIdType, IChatOption, ISelfFeatureRecord, SelfFeatureSubStepType } from '@/types/consultation'
+import type { MeridianCodeType } from '@/types/meridian'
 import { SELF_FEATURE_LOCATIONS, SELF_FEATURE_SYMPTOMS, SELF_FEATURE_CATEGORY_OPTIONS, SELF_FEATURE_SEVERITY_OPTIONS, SELF_FEATURE_MAX_COUNT } from '@/data/selfFeature'
+import { MERIDIAN_DATA, MERIDIAN_CODE_MAP, MERIDIAN_KEYWORD_MAP } from '@/data/meridianData'
 import { FLOW_STEPS } from '@/data/consultationFlow'
 import { generateResponse } from '@/data/consultationResponse'
 import type { IUserInfo } from '@/types/user'
@@ -18,7 +21,7 @@ export interface ISelfFeatureContext {
 export function useSelfFeature(ctx: ISelfFeatureContext) {
   const { userInfo, messages, goToStep, doctorSay, scrollToBottom } = ctx
 
-  const selfFeatureSubStep = ref<SelfFeatureSubStepType>('location')
+  const selfFeatureSubStep = ref<SelfFeatureSubStepType>('meridian')
   const selfFeatureRecords = ref<ISelfFeatureRecord[]>([])
   const selfFeatureCurrentLocation = ref<string>('')
   const selfFeatureCurrentLocationZone = ref<'upper' | 'middle' | 'lower'>('upper')
@@ -27,6 +30,9 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
   const selfFeatureCurrentSymptomBaseCode = ref<string>('')
   const selfFeatureCurrentSymptomFixedTaCode = ref<string | undefined>(undefined)
   const selfFeatureExpandKey = ref<string>('')
+  // ── 经脉模式新增状态 ──────────────────────────────────────
+  const selfFeatureCurrentMeridianCode = ref<MeridianCodeType | ''>('')
+  const selfFeatureCurrentMeridianName = ref<string>('')
 
   const filteredLocations = computed(() => {
     const { gender, age } = userInfo.value
@@ -60,6 +66,21 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
   const buildSelfFeatureStep = () => {
     const count = selfFeatureRecords.value.length
     const stepId = 'self_feature_question' as StepIdType
+
+    // ── 经脉模式：首步骤为 meridian（通过3D模型点击触发，无需选项） ──
+    if (selfFeatureSubStep.value === 'meridian') {
+      const doneOption: IChatOption = { label: '没有其他不适了', nextStep: 'self_feature_summary' as StepIdType, payload: undefined }
+      if (count > 0) doneOption.label = '没有了，就这些'
+      return {
+        id: stepId,
+        doctorText: count > 0
+          ? `好的，已记录。请点击下一个不适的经脉或身体部位。`
+          : '请问您身体其他部位是否有不适的感觉？请直接在人体模型上点击不适的经脉或部位。',
+        options: [doneOption],
+        isFreeInput: true,
+        isEnd: false,
+      }
+    }
 
     if (selfFeatureSubStep.value === 'location') {
       const doneOption: IChatOption = { label: '没有其他不适了', nextStep: 'self_feature_summary' as StepIdType, payload: undefined }
@@ -152,6 +173,8 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       symptomBaseCode: selfFeatureCurrentSymptomBaseCode.value,
       severity,
       fixedTaCode: selfFeatureCurrentSymptomFixedTaCode.value,
+      meridianCode: selfFeatureCurrentMeridianCode.value || undefined,
+      meridianName: selfFeatureCurrentMeridianName.value || undefined,
     })
   }
 
@@ -159,6 +182,15 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
   const handleSelfFeatureOptionClick = async (label: string): Promise<boolean> => {
     messages.value.push({ role: 'user', text: label })
     await scrollToBottom()
+
+    if (selfFeatureSubStep.value === 'meridian') {
+      if (label === '没有其他不适了' || label === '没有了，就这些') {
+        await goToStep('self_feature_summary')
+        return true
+      }
+      // 经脉模式下，选项只有"结束"按钮，其他通过3D模型点击触发
+      return true
+    }
 
     if (selfFeatureSubStep.value === 'location') {
       if (label === '没有其他不适了' || label === '没有了，就这些') {
@@ -218,8 +250,10 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
 
     if (selfFeatureSubStep.value === 'continue') {
       if (label === '继续添加') {
-        selfFeatureSubStep.value = 'location'
+        selfFeatureSubStep.value = 'meridian'
         selfFeatureCurrentLocation.value = ''
+        selfFeatureCurrentMeridianCode.value = ''
+        selfFeatureCurrentMeridianName.value = ''
         await doctorSay(buildSelfFeatureStep().doctorText)
         return true
       }
@@ -247,6 +281,55 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
         await doctorSay('我为您简单解释一下这些症状含义：\n\n' + explanations)
         return true
       }
+    }
+
+    if (selfFeatureSubStep.value === 'meridian') {
+      // 经脉模式下，语音输入尝试匹配经脉关键词
+      const meridianMatch = Object.keys(MERIDIAN_KEYWORD_MAP).find(kw => text.includes(kw))
+      if (meridianMatch) {
+        const code = MERIDIAN_KEYWORD_MAP[meridianMatch] as MeridianCodeType
+        const def = MERIDIAN_CODE_MAP[code]
+        if (def) {
+          selfFeatureCurrentMeridianCode.value = code
+          selfFeatureCurrentMeridianName.value = def.shortName
+          selfFeatureCurrentLocation.value = def.shortName
+          selfFeatureCurrentLocationZone.value = def.zone
+          selfFeatureSubStep.value = 'nature'
+          await doctorSay(`好的，${def.name}需要注意。请问这个位置具体是什么感觉？`, 300)
+          return true
+        }
+      }
+      // 尝试匹配传统部位关键词作为备选
+      const locationKeywords: Record<string, string> = {
+        '头': '头部', '脑袋': '头部', '额头': '头部',
+        '脖子': '颈肩', '肩': '颈肩', '肩膀': '颈肩',
+        '胸': '胸背', '胸口': '胸背', '后背': '胸背', '背': '胸背',
+        '肚子': '上腹部', '胃': '上腹部', '上腹': '上腹部',
+        '下腹': '下腹部', '小腹': '下腹部',
+        '腰': '腰背', '腰背': '腰背',
+        '手': '上肢', '胳膊': '上肢', '手臂': '上肢',
+        '腿': '下肢', '脚': '下肢', '膝': '下肢',
+      }
+      const locMatch = Object.keys(locationKeywords).find(kw => text.includes(kw))
+      if (locMatch) {
+        const targetLabel = locationKeywords[locMatch]
+        if (targetLabel) {
+          const target = filteredLocations.value.find(l => l.label === targetLabel)
+          if (target) {
+            selfFeatureCurrentLocation.value = target.label
+            selfFeatureCurrentLocationZone.value = target.zone
+            selfFeatureSubStep.value = 'nature'
+            await doctorSay(`好的，${target.label}需要注意。请问这种不适具体是什么感觉？`, 300)
+            return true
+          }
+        }
+      }
+      if (text.includes('没有') || text.includes('没了') || text.includes('都不')) {
+        await goToStep('self_feature_summary')
+        return true
+      }
+      await doctorSay('请在人体模型上点击不适的经脉或部位，或者直接说出位置，比如"肺经""头部""肩膀"等。如果没有其他不适，可以说"没有了"。')
+      return true
     }
 
     if (selfFeatureSubStep.value === 'location') {
@@ -319,7 +402,9 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
 
     if (selfFeatureSubStep.value === 'continue') {
       if (text.includes('继续') || text.includes('还有') || text.includes('添加')) {
-        selfFeatureSubStep.value = 'location'
+        selfFeatureSubStep.value = 'meridian'
+        selfFeatureCurrentMeridianCode.value = ''
+        selfFeatureCurrentMeridianName.value = ''
         await doctorSay(buildSelfFeatureStep().doctorText)
         return true
       }
@@ -354,7 +439,9 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
   // 重置自选特征状态
   const resetSelfFeature = () => {
     selfFeatureRecords.value = []
-    selfFeatureSubStep.value = 'location'
+    selfFeatureSubStep.value = 'meridian'
+    selfFeatureCurrentMeridianCode.value = ''
+    selfFeatureCurrentMeridianName.value = ''
   }
 
   // 生成自选特征汇总文本
@@ -362,8 +449,41 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
     if (selfFeatureRecords.value.length === 0) {
       return '好的，您没有其他部位的不适。所有信息已确认完成，接下来系统将根据您的整体情况进行辨证分析。'
     }
-    const lines = selfFeatureRecords.value.map((r, i) => `${i + 1}. ${r.location}：${r.symptom}（${r.severity === 1 ? '较轻' : '较重'}）`)
+    const lines = selfFeatureRecords.value.map((r, i) => {
+      const locationLabel = r.meridianName ? `${r.meridianName}(${r.location})` : r.location
+      return `${i + 1}. ${locationLabel}：${r.symptom}（${r.severity === 1 ? '较轻' : '较重'}）`
+    })
     return `以下是您提到的所有额外身体不适，请确认是否准确：\n\n${lines.join('\n')}`
+  }
+
+  // ── 经脉模式：3D模型经脉点击处理 ──────────────────────────
+  const handleMeridianSelect = async (event: { meridianCode: string; point?: [number, number, number] }) => {
+    const def = MERIDIAN_CODE_MAP[event.meridianCode]
+    if (!def) return
+
+    // 如果当前不在 meridian 子步骤（比如正在选症状性质/程度），忽略3D点击
+    if (selfFeatureSubStep.value !== 'meridian') return
+
+    selfFeatureCurrentMeridianCode.value = def.code as MeridianCodeType
+    selfFeatureCurrentMeridianName.value = def.shortName
+    selfFeatureCurrentLocation.value = def.shortName
+    selfFeatureCurrentLocationZone.value = def.zone
+    selfFeatureSubStep.value = 'nature'
+
+    // 在对话中显示用户的选择
+    messages.value.push({ role: 'user', text: def.shortName })
+    await scrollToBottom()
+    await doctorSay(generateResponse('O_VALID'), 300)
+    await doctorSay(`这是${def.name}，${def.description}请问这个位置是什么感觉？可以直接说出来，或者从选项中选择。`)
+  }
+
+  // ── 获取已记录的经脉编号集合（用于3D场景中标记已选经脉） ──
+  const getRecordedMeridianCodes = (): Set<MeridianCodeType> => {
+    const codes = new Set<MeridianCodeType>()
+    for (const r of selfFeatureRecords.value) {
+      if (r.meridianCode) codes.add(r.meridianCode as MeridianCodeType)
+    }
+    return codes
   }
 
   return {
@@ -376,6 +496,8 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
     selfFeatureCurrentSymptomBaseCode,
     selfFeatureCurrentSymptomFixedTaCode,
     selfFeatureExpandKey,
+    selfFeatureCurrentMeridianCode,
+    selfFeatureCurrentMeridianName,
     filteredLocations,
     filteredCategoryOptions,
     buildSelfFeatureStep,
@@ -384,5 +506,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
     handleSelfFeatureSubmitText,
     resetSelfFeature,
     getSummaryText,
+    handleMeridianSelect,
+    getRecordedMeridianCodes,
   }
 }

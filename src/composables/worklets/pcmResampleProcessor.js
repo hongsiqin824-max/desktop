@@ -23,6 +23,8 @@ class PCMResampleProcessor extends AudioWorkletProcessor {
         this._active = true
       } else if (e.data.type === 'stop') {
         this._active = false
+        // 主动通知主线程：worklet 已停止，可以安全断开
+        this.port.postMessage({ type: 'flushed' })
       }
     }
   }

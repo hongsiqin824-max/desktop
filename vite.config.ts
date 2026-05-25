@@ -4,10 +4,11 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { templateCompilerOptions } from '@tresjs/core'
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue(templateCompilerOptions),
     vueDevTools(),
     basicSsl(),
   ],

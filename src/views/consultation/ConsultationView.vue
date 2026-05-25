@@ -13,6 +13,8 @@ import { DETAIL_QUESTION_MAP, COLD_QUESTIONS } from '@/data/consultationDetail'
 import { generateMockSyndromeOutput } from '@/data/syndromeOutput'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
+import type { MeridianCodeType } from '@/types/meridian'
+import MeridianBodyView from '@/components/business/meridian/MeridianBodyView.vue'
 
 import './styles/ConsultationView.css'
 
@@ -59,7 +61,7 @@ const showErrorToast = ref(false)
 const errorToastText = ref('')
 
 // ── 异常回答关键词 ────────────────────────────────────────────
-const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS } = KEYWORD_CONFIG
+const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
 const invalidRetryCount = ref(0)
 
 // ── 工具函数 ─────────────────────────────────────────────────
@@ -159,7 +161,7 @@ const currentStep = computed(() => {
 // ── 意图步骤集合 ─────────────────────────────────────────────
 const INTENT_STEPS: Set<StepIdType> = new Set([
   'initial', 'branch_a_free', 'branch_b_symptom', 'branch_b_clarify',
-  'branch_c_condition', 'branch_c_clarify', 'severity',
+  'branch_c_condition', 'branch_c_clarify',
 ])
 const isIntentStep = computed(() => INTENT_STEPS.has(currentStepId.value))
 const isSelfFeaturePhase = computed(() =>
@@ -250,6 +252,8 @@ const saveSnapshot = () => {
     selfFeatureCurrentSymptomCategory: selfFeature.selfFeatureCurrentSymptomCategory.value,
     selfFeatureCurrentSymptomBaseCode: selfFeature.selfFeatureCurrentSymptomBaseCode.value,
     selfFeatureCurrentSymptomFixedTaCode: selfFeature.selfFeatureCurrentSymptomFixedTaCode.value,
+    selfFeatureCurrentMeridianCode: selfFeature.selfFeatureCurrentMeridianCode.value,
+    selfFeatureCurrentMeridianName: selfFeature.selfFeatureCurrentMeridianName.value,
     selfFeatureExpandKey: selfFeature.selfFeatureExpandKey.value,
     analysisData: analysisData.value, syndromeOutputData: syndromeOutputData.value,
   }
@@ -278,6 +282,8 @@ const reselectCurrentAnswer = async () => {
   selfFeature.selfFeatureCurrentSymptomCategory.value = snap.selfFeatureCurrentSymptomCategory
   selfFeature.selfFeatureCurrentSymptomBaseCode.value = snap.selfFeatureCurrentSymptomBaseCode
   selfFeature.selfFeatureCurrentSymptomFixedTaCode.value = snap.selfFeatureCurrentSymptomFixedTaCode
+  selfFeature.selfFeatureCurrentMeridianCode.value = snap.selfFeatureCurrentMeridianCode as MeridianCodeType | ''
+  selfFeature.selfFeatureCurrentMeridianName.value = snap.selfFeatureCurrentMeridianName
   selfFeature.selfFeatureExpandKey.value = snap.selfFeatureExpandKey
   analysisData.value = snap.analysisData; syndromeOutputData.value = snap.syndromeOutputData
   lastSnapshot.value = null
@@ -337,7 +343,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   }
   if (stepId === 'self_feature_intro') {
     selfFeature.resetSelfFeature()
-    text = '接下来，我想了解一下您身体其他部位是否还有不适的感觉？比如某个位置疼痛、发麻、发胀等，您可以逐个告诉我，最多可以描述5个部位的不适。'
+    text = '接下来，我请您在右边这个人体经脉图上，点击您感觉不舒服的位置。每条经脉对应不同的脏腑和气血通道，您点上去就能看到经脉名称和基本信息。选好经脉之后，再告诉我是什么感觉，最多可以记录5处不适。'
   }
   if (stepId === 'self_feature_summary') text = selfFeature.getSummaryText()
   if (stepId === 'syndrome_output') {
@@ -442,6 +448,7 @@ const buildFallbackQuestion = (): string => {
   }
 
   if (stepId === 'self_feature_question') {
+    if (selfFeature.selfFeatureSubStep.value === 'meridian') return '您说的我没太理解，请您在右边的人体经脉图上，点击您不舒服的位置。也可以直接说出经脉名称，比如"肺经""胃经""肝经"等。如果没有其他不适了，可以说"没有了"。'
     if (selfFeature.selfFeatureSubStep.value === 'location') return '您说的我没太理解，请告诉我不舒服在哪个部位？比如头、脖子、肩膀、腰、腿等。如果没有其他不适了，可以说"没有了"。'
     if (selfFeature.selfFeatureSubStep.value === 'nature' || selfFeature.selfFeatureSubStep.value === 'nature_expand') return '您说的我没太理解，请问这种不适具体是什么感觉？比如热痛、冷痛、胀痛、麻木、痒等。如果想看更多选项，可以说"更多疼痛类"或"外观变化类"。'
     if (selfFeature.selfFeatureSubStep.value === 'severity') return `您说的我没太理解，请问${selfFeature.selfFeatureCurrentSymptom.value}的程度如何？您可以直接说"较轻"或"较重"。`
@@ -495,6 +502,28 @@ const onSubmitText = async (text: string) => {
     await doctorSay(generateResponse('UNCERTAIN'))
     const fallback = REFUSAL_FALLBACK[currentStepId.value]
     if (fallback) await goToStep(fallback); return
+  }
+
+  // ── severity 步骤关键词预匹配（避免走通用意图识别导致无法识别口语化表达）──
+  if (currentStepId.value === 'severity') {
+    // 先检查是否包含疗效保证关键词
+    if (GUARANTEE_KEYWORDS.some(kw => text.includes(kw))) {
+      await doctorSay(generateResponse('SEVERITY_GUARANTEE'))
+      return
+    }
+    // 按严重程度从高到低匹配，避免"不严重"被"严重"误匹配
+    if (SEVERITY_SEVERE_KEYWORDS.some(kw => text.includes(kw))) {
+      await goToStep('end_severe')
+      return
+    }
+    if (SEVERITY_MODERATE_KEYWORDS.some(kw => text.includes(kw))) {
+      await goToStep('end_moderate')
+      return
+    }
+    if (SEVERITY_MILD_KEYWORDS.some(kw => text.includes(kw))) {
+      await goToStep('end_moderate')
+      return
+    }
   }
 
   // ── 大模型分类 ─────────────────────────────────────────────
@@ -588,14 +617,15 @@ onUnmounted(() => { ttsStop() })
 <template>
   <div class="consultation-view">
 
-    <!-- 顶部：医生形象 / 自选特征阶段显示人体图 -->
+    <!-- 顶部：医生形象 / 自选特征阶段显示3D经脉模型 -->
     <div class="doctor-section">
-      <img
+      <!-- 自选特征阶段：显示3D经脉交互模型（替代 body.png） -->
+      <MeridianBodyView
         v-if="isSelfFeaturePhase"
-        class="doctor-img"
-        src="@/assets/body.png"
-        alt="人体模型"
+        :recorded-meridians="selfFeature.getRecordedMeridianCodes()"
+        @meridian-select="selfFeature.handleMeridianSelect"
       />
+      <!-- 非自选特征阶段：显示老中医师形象（保持不变） -->
       <img
         v-else
         class="doctor-img"
@@ -604,7 +634,7 @@ onUnmounted(() => { ttsStop() })
       />
       <div class="doctor-badge">
         <div class="doctor-badge-dot"></div>
-        <div class="doctor-badge-name">{{ isSelfFeaturePhase ? '请指出不适位置' : '中医师 · 在线问诊' }}</div>
+        <div class="doctor-badge-name">{{ isSelfFeaturePhase ? '点击经脉查看信息' : '中医师 · 在线问诊' }}</div>
       </div>
     </div>
 

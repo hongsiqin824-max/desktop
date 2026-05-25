@@ -2,8 +2,9 @@
 import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { StepIdType, IChatOption, IDetailAnswer, IDetailSeverityPending, IChatMessage } from '@/types/consultation'
-import { DETAIL_QUESTION_MAP, DETAIL_SEQUENCE_MAP, DETAIL_FIRST_QUESTION, DETAIL_EXPLANATION_MAP, COLD_QUESTIONS, COLD_QUESTION_SEQUENCE } from '@/data/consultationDetail'
+import { DETAIL_QUESTION_MAP, DETAIL_SEQUENCE_MAP, DETAIL_FIRST_QUESTION, DETAIL_EXPLANATION_MAP, COLD_QUESTIONS, COLD_QUESTION_SEQUENCE, GENDER_QUESTIONS, GENDER_QUESTION_SEQUENCE, GENDER_CONDITIONS, SHARED_CHILL_HEAT_QUESTIONS, SHARED_THIRST_QUESTIONS, SHARED_TASTE_QUESTIONS, SHARED_STOOL_QUESTIONS, SHARED_BLOOD_STASIS_QUESTIONS, SHARED_SWEAT_QUESTIONS, SHARED_FATIGUE_QUESTIONS, SHARED_FOLLOWUP_MAP } from '@/data/consultationDetail'
 import { generateResponse } from '@/data/consultationResponse'
+import { useUserStore } from '@/stores/global/user'
 
 export interface IDetailContext {
   currentSymptom: Ref<string>
@@ -24,23 +25,57 @@ export function useDetailQuestion(ctx: IDetailContext) {
   const detailAnswers = ref<IDetailAnswer[]>([])
   const detailSeverityPending = ref<IDetailSeverityPending | null>(null)
   const detailFailCount = ref(0)
+  const genderQuestionsInjected = ref(false)
+
+  // 查找问题定义：先查症状专属题库，再查共享题库（寒热/口渴/口味/大便/血瘀），最后查性别共享题库
+  const findQuestion = (category: string) => {
+    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
+    return questionSet[category] || SHARED_CHILL_HEAT_QUESTIONS[category] || SHARED_THIRST_QUESTIONS[category] || SHARED_TASTE_QUESTIONS[category] || SHARED_STOOL_QUESTIONS[category] || SHARED_BLOOD_STASIS_QUESTIONS[category] || SHARED_SWEAT_QUESTIONS[category] || SHARED_FATIGUE_QUESTIONS[category] || GENDER_QUESTIONS[category]
+  }
+
+  // 解析共享追问的通用 key 为当前症状的实际 key
+  const resolveFollowUps = (keys: string[]): string[] => {
+    const map = SHARED_FOLLOWUP_MAP[currentSymptom.value]
+    if (!map) return keys
+    return keys.map(key => map[key] || key)
+  }
+
+  // 尝试注入性别特异性问题（仅执行一次）
+  const tryInjectGenderQuestions = (): boolean => {
+    if (genderQuestionsInjected.value) return false
+    genderQuestionsInjected.value = true
+
+    const userStore = useUserStore()
+    const gender = userStore.userInfo.gender
+    const age = userStore.userInfo.age
+    const genderKey = gender === '男' ? 'male' : gender === '女' ? 'female' : null
+    if (!genderKey || !age) return false
+
+    const cond = GENDER_CONDITIONS[genderKey]
+    if (age < cond.ageRange[0] || age > cond.ageRange[1]) return false
+
+    const seq = GENDER_QUESTION_SEQUENCE[genderKey]
+    detailQuestionQueue.value = [...seq]
+    return true
+  }
 
   // 程度追问完成后或首题回答后，从队列取下一题（跳过已问过的追加问诊）
   const advanceDetailQueue = async () => {
-    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
     const answeredTaCodes = new Set(detailAnswers.value.map(a => a.taCode))
 
+    // 跳过已问过的题目
     while (detailQuestionQueue.value.length > 0 && detailAskedCategories.value.has(detailQuestionQueue.value[0]!)) {
       detailQuestionQueue.value.shift()
     }
 
+    // 跳过无效题目（excludeAfter 等）
     while (detailQuestionQueue.value.length > 0) {
       const category = detailQuestionQueue.value[0]!
       if (detailAskedCategories.value.has(category)) {
         detailQuestionQueue.value.shift()
         continue
       }
-      const question = questionSet[category]
+      const question = findQuestion(category)
       if (!question) {
         detailQuestionQueue.value.shift()
         detailAskedCategories.value.add(category)
@@ -62,11 +97,18 @@ export function useDetailQuestion(ctx: IDetailContext) {
       const category = detailQuestionQueue.value.shift()!
       detailAskedCategories.value.add(category)
       detailQuestionCategory.value = category
-      const currentQ = questionSet[category]
+      const currentQ = findQuestion(category)
       await doctorSay(generateResponse('O_VALID'), 300)
       if (currentQ) {
         await doctorSay(currentQ.doctorText)
       }
+      return
+    }
+
+    // 队列为空时，尝试注入性别特异性问题
+    if (tryInjectGenderQuestions()) {
+      // 注入成功，重新执行队列推进
+      await advanceDetailQueue()
       return
     }
 
@@ -75,7 +117,6 @@ export function useDetailQuestion(ctx: IDetailContext) {
 
   // 从队列中跳过无效题目并取出下一有效题（用于首题/程度追问后的队列推进）
   const shiftNextValidFromQueue = async (): Promise<boolean> => {
-    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
     const answeredTaCodes = new Set(detailAnswers.value.map(a => a.taCode))
 
     while (detailQuestionQueue.value.length > 0 && detailAskedCategories.value.has(detailQuestionQueue.value[0]!)) {
@@ -87,7 +128,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
         detailQuestionQueue.value.shift()
         continue
       }
-      const q = questionSet[cat]
+      const q = findQuestion(cat)
       if (!q) {
         detailQuestionQueue.value.shift()
         detailAskedCategories.value.add(cat)
@@ -108,9 +149,8 @@ export function useDetailQuestion(ctx: IDetailContext) {
     if (detailQuestionQueue.value.length > 0) {
       detailQuestionCategory.value = detailQuestionQueue.value.shift()!
       detailAskedCategories.value.add(detailQuestionCategory.value)
-      const questionSet2 = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
       await doctorSay(generateResponse('O_VALID'), 300)
-      const nextQ = questionSet2[detailQuestionCategory.value]
+      const nextQ = findQuestion(detailQuestionCategory.value)
       if (nextQ) {
         await doctorSay(nextQ.doctorText)
       }
@@ -140,6 +180,11 @@ export function useDetailQuestion(ctx: IDetailContext) {
       const pending = detailSeverityPending.value
       detailSeverityPending.value = null
 
+      // 程度追问完成后，若有后续追问则插入队列头部
+      if (pending.followUpQuestions && pending.followUpQuestions.length > 0) {
+        detailQuestionQueue.value = [...pending.followUpQuestions, ...detailQuestionQueue.value]
+      }
+
       if (pending.isFirstQuestion) {
         detailBranch.value = pending.parentLabel
         detailIsFirstQuestion.value = false
@@ -150,7 +195,12 @@ export function useDetailQuestion(ctx: IDetailContext) {
         }
         const hasNext = await shiftNextValidFromQueue()
         if (!hasNext) {
-          await goToStep('detail_summary')
+          // 队列为空时尝试注入性别问题
+          if (tryInjectGenderQuestions()) {
+            await advanceDetailQueue()
+          } else {
+            await goToStep('detail_summary')
+          }
         }
         return true
       }
@@ -164,16 +214,27 @@ export function useDetailQuestion(ctx: IDetailContext) {
     messages.value.push({ role: 'user', text: label })
     await scrollToBottom()
 
-    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-
     detailAskedCategories.value.add(detailQuestionCategory.value)
-    const question = questionSet[detailQuestionCategory.value]
+    const question = findQuestion(detailQuestionCategory.value)
     const matchedOpt = question?.options.find(opt => opt.label === label)
     if (matchedOpt && question) {
-      detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category })
+      // 选项级 excludeAfter：若已记录过互斥编码，跳过该选项直接推进下一题
+      if (matchedOpt.excludeAfter && matchedOpt.excludeAfter.length > 0) {
+        const answeredCodes = new Set(detailAnswers.value.map(a => a.taCode))
+        if (matchedOpt.excludeAfter.some(code => answeredCodes.has(code))) {
+          await doctorSay(generateResponse('O_VALID'), 300)
+          await advanceDetailQueue()
+          return true
+        }
+      }
+
+      // 有 taCode 的选项才记录答案，没有 taCode 的是否定选项（不记录编码，仅推进流程）
+      if (matchedOpt.taCode) {
+        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category })
+      }
 
       if (matchedOpt.followUpQuestions && matchedOpt.followUpQuestions.length > 0) {
-        detailQuestionQueue.value = [...matchedOpt.followUpQuestions, ...detailQuestionQueue.value]
+        detailQuestionQueue.value = [...resolveFollowUps(matchedOpt.followUpQuestions), ...detailQuestionQueue.value]
       }
 
       if (matchedOpt.severityQuestion) {
@@ -184,6 +245,9 @@ export function useDetailQuestion(ctx: IDetailContext) {
           parentLabel: matchedOpt.label,
           parentCategory: question.category,
           isFirstQuestion: detailIsFirstQuestion.value,
+          followUpQuestions: matchedOpt.severityQuestion.followUpQuestions
+            ? resolveFollowUps(matchedOpt.severityQuestion.followUpQuestions)
+            : undefined,
         }
         await doctorSay(generateResponse('O_VALID'), 300)
         await doctorSay(`请问${matchedOpt.severityQuestion.subjectText}的程度是较轻还是较重？`)
@@ -231,8 +295,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
     detailFailCount.value++
     if (detailFailCount.value >= 3) {
       detailFailCount.value = 0
-      const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-      const question = questionSet[detailQuestionCategory.value]
+      const question = findQuestion(detailQuestionCategory.value)
       if (question) {
         const labels = question.options.map(opt => opt.label).join('、')
         await doctorSay(`我已经尝试多次理解您的描述，为了准确记录，请您直接从以下选项中选择一项：${labels}。`)
@@ -240,8 +303,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
         await doctorSay('请您从给出的选项中选择最符合您情况的一项，这样我能更准确地记录。')
       }
     } else {
-      const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-      const question = questionSet[detailQuestionCategory.value]
+      const question = findQuestion(detailQuestionCategory.value)
       if (question) {
         const labels = question.options.map(opt => opt.label).join('、')
         await doctorSay(`您说的我没太理解，${question.doctorText.replace(/如果不太理解.*$/, '')}您可以直接说：${labels}。`)
@@ -259,6 +321,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
     detailQuestionQueue.value = []
     detailAskedCategories.value = new Set()
     detailAnswers.value = []
+    genderQuestionsInjected.value = false
     return firstCategory
   }
 

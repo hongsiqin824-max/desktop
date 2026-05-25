@@ -5,17 +5,17 @@ import type { ISelfFeatureSymptom, ISelfFeatureLocation, ISelfFeatureCategoryOpt
 
 // ── 身体部位选项 ──────────────────────────────────────────────
 export const SELF_FEATURE_LOCATIONS: ISelfFeatureLocation[] = [
-  { label: '头部', zone: 'upper', primaryMeridians: ['JM3', 'JM11', 'JM12', 'JM14'], semanticDesc: '头脑袋额头头顶等头部区域' },
-  { label: '颈肩', zone: 'upper', primaryMeridians: ['JM2', 'JM10'], semanticDesc: '脖子肩膀颈椎肩颈区域' },
-  { label: '胸背', zone: 'upper', primaryMeridians: ['JM1', 'JM9', 'JM7'], semanticDesc: '胸口前胸后背胸背区域' },
-  { label: '上腹部', zone: 'middle', primaryMeridians: ['JM3', 'JM4'], semanticDesc: '胃脘心口窝肚子上部区域' },
-  { label: '下腹部', zone: 'lower', primaryMeridians: ['JM8', 'JM12'], semanticDesc: '小腹小肚子肚脐以下区域' },
-  { label: '腰背', zone: 'middle', primaryMeridians: ['JM7', 'JM8'], semanticDesc: '腰腰椎腰杆腰背区域' },
-  { label: '上肢', zone: 'upper', primaryMeridians: ['JM2', 'JM6', 'JM10'], semanticDesc: '手臂胳膊手肘手腕手指区域' },
-  { label: '下肢', zone: 'lower', primaryMeridians: ['JM3', 'JM11', 'JM8'], semanticDesc: '腿脚膝盖小腿大腿脚踝脚底区域' },
-  { label: '男性生殖', zone: 'lower', primaryMeridians: ['JM8'], genderCondition: 'male', ageRange: [16, 65], semanticDesc: '男性生殖器睾丸会阴区域' },
-  { label: '女性生殖', zone: 'lower', primaryMeridians: ['JM8'], genderCondition: 'female', ageRange: [15, 50], semanticDesc: '女性外阴阴道子宫区域' },
-  { label: '乳房', zone: 'upper', primaryMeridians: ['JM1'], genderCondition: 'female', ageRange: [15, 50], semanticDesc: '乳房乳头胸部乳腺区域' },
+  { label: '头部', zone: 'upper', primaryMeridians: ['JM3', 'JM11', 'JM12', 'JM14'], semanticDesc: '头部区域，包括头顶、前额、太阳穴、后脑等位置' },
+  { label: '颈肩', zone: 'upper', primaryMeridians: ['JM2', 'JM10'], semanticDesc: '颈部和肩部区域，包括脖子、后颈、肩膀等位置' },
+  { label: '胸背', zone: 'upper', primaryMeridians: ['JM1', 'JM9', 'JM7'], semanticDesc: '胸背部区域，包括前胸、胸口、后背、肩胛等位置' },
+  { label: '上腹部', zone: 'middle', primaryMeridians: ['JM3', 'JM4'], semanticDesc: '肚脐以上的腹部区域，包括胃脘、心口窝等位置' },
+  { label: '下腹部', zone: 'lower', primaryMeridians: ['JM8', 'JM12'], semanticDesc: '肚脐以下的腹部区域，包括小腹、丹田等位置' },
+  { label: '腰背', zone: 'middle', primaryMeridians: ['JM7', 'JM8'], semanticDesc: '腰部区域，包括腰椎、腰杆、后腰等位置' },
+  { label: '上肢', zone: 'upper', primaryMeridians: ['JM2', 'JM6', 'JM10'], semanticDesc: '上肢区域，包括手臂、手肘、手腕、手掌、手指等位置' },
+  { label: '下肢', zone: 'lower', primaryMeridians: ['JM3', 'JM11', 'JM8'], semanticDesc: '下肢区域，包括大腿、膝盖、小腿、脚踝、脚底等位置' },
+  { label: '男性生殖', zone: 'lower', primaryMeridians: ['JM8'], genderCondition: 'male', ageRange: [16, 65], semanticDesc: '男性生殖系统区域' },
+  { label: '女性生殖', zone: 'lower', primaryMeridians: ['JM8'], genderCondition: 'female', ageRange: [15, 50], semanticDesc: '女性生殖系统区域，包括外阴、子宫等' },
+  { label: '乳房', zone: 'upper', primaryMeridians: ['JM1'], genderCondition: 'female', ageRange: [15, 50], semanticDesc: '乳房乳腺区域' },
 ]
 
 // ── 症状性质选项 ──────────────────────────────────────────────
@@ -23,16 +23,16 @@ export const SELF_FEATURE_LOCATIONS: ISelfFeatureLocation[] = [
 export const SELF_FEATURE_SYMPTOMS: Record<string, ISelfFeatureSymptom[]> = {
   // 常见症状（首屏展示）
   common: [
-    { label: '热痛', brief: '痛处发热发烫', detail: '这是局部组织被热毒或瘀火堵住烧出来的', category: 'K', baseCode: 'RT', semanticDesc: '痛处发热发烫火辣辣灼热感' },
-    { label: '冷痛', brief: '遇冷就痛，得热敷舒服', detail: '是阳气没到或寒气扎根，把局部血脉给冻僵了', category: 'X', baseCode: 'LT', semanticDesc: '遇冷加重得热敷舒服冰凉寒痛' },
-    { label: '胀痛', brief: '痛处发胀，像要裂开', detail: '这是局部气机被死死堵在里面出不来', category: 'K', baseCode: 'ZT', semanticDesc: '撑胀胀满发胀要裂开的感觉' },
-    { label: '刺痛', brief: '像被针扎，痛点固定', detail: '这是瘀血死卡在局部经络里最典型的标志', category: 'K', baseCode: 'CT', semanticDesc: '像针扎刀剜痛点固定扎着疼' },
-    { label: '酸痛', brief: '软绵绵带酸无力', detail: '局部气血不足或有湿气泡着肌肉', category: 'P', baseCode: 'ST', semanticDesc: '酸软无力酸溜溜酸胀酸疼' },
-    { label: '隐隐痛', brief: '时有时无的轻微闷痛', detail: '多属于局部阴血或阳气太虚了，是"空转"的疼', category: 'X', baseCode: 'YY', semanticDesc: '轻微隐隐约约不太痛时有时无的闷痛' },
-    { label: '剧痛', brief: '疼痛剧烈难忍', detail: '这是气机在体内逆行乱冲，带有极强的攻击性', category: 'K', baseCode: 'GT', semanticDesc: '特别痛痛得厉害剧烈难忍攻痛撑着顶撞' },
-    { label: '麻木', brief: '像隔着层厚布感觉减退', detail: '气过不去则麻，血过不去则木，多是气滞血瘀或风痰', category: 'X', baseCode: 'MM', semanticDesc: '隔着厚布感觉减退没知觉麻木不仁' },
-    { label: '痒', brief: '皮肤发痒想抓', detail: '是风邪外袭或血虚生风燥扰，热盛也会兼痒', category: 'P', baseCode: 'YA', semanticDesc: '痒痒痒得难受想抓皮肤痒' },
-    { label: '无力', brief: '使不上劲', detail: '中气或局部筋脉失养，缺少能量撑腰', category: 'X', baseCode: 'WL', semanticDesc: '没劲使不上劲乏力没力气软绵绵' },
+    { label: '热痛', brief: '痛处发热发烫', detail: '这是局部组织被热毒或瘀火堵住烧出来的', category: 'K', baseCode: 'RT', semanticDesc: '疼痛伴随局部灼热感、发烫感，核心是"痛+热"的组合' },
+    { label: '冷痛', brief: '遇冷就痛，得热敷舒服', detail: '是阳气没到或寒气扎根，把局部血脉给冻僵了', category: 'X', baseCode: 'LT', semanticDesc: '疼痛在遇冷或受寒时加重、热敷后缓解，核心是"痛+冷触发+热敷缓解"的寒性特征' },
+    { label: '胀痛', brief: '痛处发胀，像要裂开', detail: '这是局部气机被死死堵在里面出不来', category: 'K', baseCode: 'ZT', semanticDesc: '疼痛伴随明显的胀满感、撑胀感，核心是"痛+胀"的组合' },
+    { label: '刺痛', brief: '像被针扎，痛点固定', detail: '这是瘀血死卡在局部经络里最典型的标志', category: 'K', baseCode: 'CT', semanticDesc: '疼痛呈针刺样、刀割样，痛点固定不移动，核心是"尖锐固定点的扎刺样痛"' },
+    { label: '酸痛', brief: '软绵绵带酸无力', detail: '局部气血不足或有湿气泡着肌肉', category: 'P', baseCode: 'ST', semanticDesc: '疼痛伴随酸软感、酸胀感，常伴无力，核心是"痛+酸软"的组合' },
+    { label: '隐隐痛', brief: '时有时无的轻微闷痛', detail: '多属于局部阴血或阳气太虚了，是"空转"的疼', category: 'X', baseCode: 'YY', semanticDesc: '疼痛程度较轻、隐隐约约、时有时无，核心是"轻微断续的闷痛"' },
+    { label: '剧痛', brief: '疼痛剧烈难忍', detail: '这是气机在体内逆行乱冲，带有极强的攻击性', category: 'K', baseCode: 'GT', semanticDesc: '疼痛程度剧烈难以忍受，核心是"疼痛强度极高的剧烈痛"' },
+    { label: '麻木', brief: '像隔着层厚布感觉减退', detail: '气过不去则麻，血过不去则木，多是气滞血瘀或风痰', category: 'X', baseCode: 'MM', semanticDesc: '局部感觉减退或异常，如隔着厚物触摸，核心是"感觉迟钝或丧失的麻感"' },
+    { label: '痒', brief: '皮肤发痒想抓', detail: '是风邪外袭或血虚生风燥扰，热盛也会兼痒', category: 'P', baseCode: 'YA', semanticDesc: '皮肤或局部有痒感、想抓挠，核心是"瘙痒感"' },
+    { label: '无力', brief: '使不上劲', detail: '中气或局部筋脉失养，缺少能量撑腰', category: 'X', baseCode: 'WL', semanticDesc: '局部或整体感觉力量不足、使不上劲，核心是"力量减弱、功能减退"' },
   ],
   // 更多疼痛类
   painMore: [
@@ -113,18 +113,17 @@ export const ZONE_PREFIX_MAP: Record<string, string> = {
 
 // ── 症状性质类别按钮（引导"更多"展开） ─────────────────────────
 export const SELF_FEATURE_CATEGORY_OPTIONS: ISelfFeatureCategoryOption[] = [
-  { label: '更多疼痛类', expandKey: 'painMore', semanticDesc: '想看更多疼痛相关的症状选项' },
-  { label: '更多感觉类', expandKey: 'sensationMore', semanticDesc: '想看更多感觉相关的症状选项' },
-  { label: '外观变化类', expandKey: 'appearance', semanticDesc: '想看外观皮肤变化的症状选项' },
-  { label: '功能受限类', expandKey: 'function', semanticDesc: '想看功能受限活动不便的症状选项' },
-  { label: '男性专项', expandKey: 'maleSpecific', genderCondition: 'male', ageRange: [16, 65], semanticDesc: '想看男性生殖相关的症状选项' },
-  { label: '女性专项', expandKey: 'femaleSpecific', genderCondition: 'female', ageRange: [15, 50], semanticDesc: '想看女性妇科相关的症状选项' },
+  { label: '更多疼痛类', expandKey: 'painMore', semanticDesc: '用户想查看更多与疼痛性质相关的症状类型' },
+  { label: '更多感觉类', expandKey: 'sensationMore', semanticDesc: '用户想查看更多非疼痛类感觉异常的症状类型' },
+  { label: '外观变化类', expandKey: 'appearance', semanticDesc: '用户想查看皮肤或局部外观发生变化类的症状' },
+  { label: '功能受限类', expandKey: 'function', semanticDesc: '用户想查看功能活动受限类的症状' },
+  { label: '男性专项', expandKey: 'maleSpecific', genderCondition: 'male', ageRange: [16, 65], semanticDesc: '用户想查看男性生殖系统相关的症状' },
+  { label: '女性专项', expandKey: 'femaleSpecific', genderCondition: 'female', ageRange: [15, 50], semanticDesc: '用户想查看女性妇科相关的症状' },
 ]
 
-// ── 症状程度选项 ──────────────────────────────────────────────
 export const SELF_FEATURE_SEVERITY_OPTIONS = [
-  { label: '较轻', value: 1, semanticDesc: '不严重轻微一点轻度不太严重' },
-  { label: '较重', value: 2, semanticDesc: '比较重挺重严重比较难受偏重明显' },
+  { label: '较轻', value: 1, semanticDesc: '用户表达该症状程度轻微、不严重、影响不大，核心是"程度轻"' },
+  { label: '较重', value: 2, semanticDesc: '用户表达该症状程度偏重、比较明显、影响较大，核心是"程度重"' },
 ]
 
 // ── 最大自选症状数量 ──────────────────────────────────────────

@@ -131,9 +131,9 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'severity',
     doctorText: '请问您的症状严重吗？',
     options: [
-      { label: '很严重', nextStep: 'end_severe' },
-      { label: '较重', nextStep: 'end_moderate' },
-      { label: '较轻', nextStep: 'end_moderate' },
+      { label: '很严重', nextStep: 'end_severe', semanticDesc: '用户表达症状非常严重、难以忍受、很厉害、特别难受，核心是"程度严重"' },
+      { label: '较重', nextStep: 'end_moderate', semanticDesc: '用户表达症状比较明显、有些难受、不太舒服，核心是"程度中等偏重"' },
+      { label: '较轻', nextStep: 'end_moderate', semanticDesc: '用户表达症状轻微、不太严重、还好、还行、一般般，核心是"程度轻微"' },
     ],
     isFreeInput: true,
   },
