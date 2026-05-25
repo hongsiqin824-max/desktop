@@ -1,0 +1,405 @@
+/* 用户注册表单页样式 */
+
+.form-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-color: var(--color-white);
+  padding: 0 60px;
+}
+
+/* 上半屏：中医助理数字人 */
+.user-assistant-section {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1080px;
+  height: 1152px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.user-assistant-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+/* 数字人助理对话气泡 */
+.form-assistant-bubble {
+  position: absolute;
+  top: 1112px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  background-color: var(--color-beige-50);
+  border-radius: 20px;
+  padding: 30px 40px;
+  box-shadow: var(--form-bubble-shadow);
+  z-index: 5;
+}
+
+/* 气泡小尾巴 */
+.form-assistant-bubble::before {
+  content: '';
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 16px 16px 16px;
+  border-style: solid;
+  border-color: transparent transparent var(--color-beige-50) transparent;
+}
+
+.form-bubble-text {
+  font-size: 36px;
+  color: var(--theme-text-main);
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* 下半屏可滚动表单区域 */
+.form-scroll-container {
+  position: absolute;
+  top: 1312px;
+  left: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: 40px 60px 40px 60px;
+  transition: height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* 标题 */
+.form-title {
+  font-size: 48px;
+  font-weight: bold;
+  color: var(--theme-text-main);
+  text-align: center;
+  margin-bottom: 60px;
+}
+
+/* 输入框列表 */
+.form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding-bottom: 60px;
+}
+
+/* 单个表单项 */
+.form-item {
+  display: flex;
+  align-items: center;
+  height: 120px;
+  background-color: var(--color-beige-50);
+  border-radius: 20px;
+  padding: 0 40px;
+  border: 2px solid var(--color-beige-100);
+}
+
+.form-label {
+  font-size: 40px;
+  color: var(--theme-text-main);
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.form-input {
+  flex-grow: 1;
+  height: 100%;
+  font-size: 40px;
+  color: var(--theme-text-main);
+  background: transparent;
+  border: none;
+}
+
+.form-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* 单选框容器 */
+.radio-group {
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  flex-grow: 1;
+}
+
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  cursor: pointer;
+}
+
+.radio-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 4px solid var(--color-beige-300);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.radio-circle.active {
+  border-color: var(--theme-primary);
+}
+
+.radio-circle.active::after {
+  content: '';
+  width: 24px;
+  height: 24px;
+  background-color: var(--theme-primary);
+  border-radius: 50%;
+}
+
+.radio-label {
+  font-size: 40px;
+  color: var(--theme-text-main);
+}
+
+/* 底部按钮 */
+.submit-btn {
+  width: 100%;
+  height: 120px;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-size: 48px;
+  font-weight: bold;
+  border-radius: 60px;
+  box-shadow: var(--btn-shadow);
+  transition: transform 0.1s;
+  margin-top: 40px;
+}
+
+.submit-btn:active {
+  transform: scale(0.98);
+}
+
+/* 自定义轻量提示弹窗（轻提示/弹窗） */
+.custom-toast-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--overlay-black);
+}
+
+.custom-toast-box {
+  width: 800px;
+  background-color: var(--color-white);
+  border-radius: 40px;
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: var(--toast-box-shadow);
+}
+
+.custom-toast-title {
+  font-size: 48px;
+  font-weight: bold;
+  color: var(--theme-text-main);
+  margin-bottom: 40px;
+}
+
+.custom-toast-message {
+  font-size: 40px;
+  color: var(--theme-text-sub);
+  margin-bottom: 60px;
+  text-align: center;
+}
+
+.custom-toast-btn {
+  width: 100%;
+  height: 100px;
+  background-color: var(--theme-primary);
+  color: var(--color-white);
+  font-size: 40px;
+  font-weight: bold;
+  border-radius: 50px;
+}
+
+/* ── 语音输入按钮 ─────────────────────────────── */
+.voice-input-section {
+  position: absolute;
+  top: 1180px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  display: flex;
+  justify-content: center;
+  z-index: 6;
+}
+
+.voice-mic-btn {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 48px;
+  background-color: var(--theme-primary);
+  color: var(--color-white);
+  font-size: 32px;
+  font-weight: bold;
+  border-radius: 50px;
+  box-shadow: var(--shadow-medium);
+  transition: transform 0.1s, background-color 0.3s;
+  cursor: pointer;
+}
+
+.voice-mic-btn:active {
+  transform: scale(0.96);
+}
+
+.voice-mic-btn.listening {
+  background-color: var(--color-red-600);
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+.voice-mic-icon {
+  font-size: 36px;
+}
+
+.voice-mic-label {
+  font-size: 32px;
+}
+
+@keyframes voicePulse {
+  0%, 100% { box-shadow: var(--mic-pulse-shadow-start); }
+  50% { box-shadow: var(--mic-pulse-shadow-end); }
+}
+
+/* ── 语音解析中浮层 ─────────────────────────────── */
+.voice-parsing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--overlay-warm);
+}
+
+.voice-parsing-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  padding: 60px;
+  background-color: var(--color-white);
+  border-radius: 40px;
+  box-shadow: var(--shadow-card);
+}
+
+.voice-parsing-icon {
+  font-size: 60px;
+  animation: parsingSpin 1.5s linear infinite;
+}
+
+.voice-parsing-text {
+  font-size: 36px;
+  color: var(--theme-text-main);
+  font-weight: bold;
+}
+
+@keyframes parsingSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ── 语音录音提示浮层 ─────────────────────────────── */
+.voice-toast-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--overlay-dark);
+}
+
+.voice-toast-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 50px 60px;
+  background-color: var(--color-white);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+  animation: voiceToastIn 0.3s ease-out;
+}
+
+.voice-toast-icon {
+  font-size: 48px;
+}
+
+.voice-toast-text {
+  font-size: 32px;
+  color: var(--theme-text-main);
+  font-weight: bold;
+}
+
+.voice-toast-hint {
+  font-size: 26px;
+  color: var(--theme-text-muted);
+  line-height: 1.5;
+  text-align: center;
+}
+
+@keyframes voiceToastIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.voice-toast-stop-btn {
+  width: 360px;
+  height: 90px;
+  background-color: var(--color-red-600);
+  color: var(--color-white);
+  font-size: 32px;
+  font-weight: bold;
+  border-radius: 45px;
+  margin-top: 20px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.voice-toast-stop-btn:active {
+  transform: scale(0.96);
+}
+
+/* ── 语音错误提示浮层 ─────────────────────────────── */
+.voice-error-overlay {
+  position: absolute;
+  top: 800px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
+}
+
+.voice-error-box {
+  padding: 30px 50px;
+  background-color: var(--error-toast-bg);
+  color: var(--error-toast-text);
+  border-radius: 20px;
+  font-size: 32px;
+  font-weight: bold;
+  box-shadow: var(--toast-box-shadow);
+}

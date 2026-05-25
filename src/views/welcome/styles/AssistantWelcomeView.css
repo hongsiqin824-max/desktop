@@ -1,0 +1,91 @@
+/* 助理欢迎页样式 */
+
+.welcome-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* 上半屏：中医助理数字人 (60-864px) */
+.assistant-section {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1080px;
+  height: 1152px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.assistant-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+/* 下半屏区域 */
+.dialog-section {
+  position: absolute;
+  top: 1152px;
+  width: 100%;
+  height: 768px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 80px;
+}
+
+/* 对话气泡 (900px 宽) */
+.chat-bubble {
+  width: 900px;
+  background-color: var(--color-white);
+  border-radius: 20px;
+  padding: 60px 40px;
+  box-shadow: var(--form-bubble-shadow);
+  position: relative;
+}
+
+/* 气泡的小尾巴 */
+.chat-bubble::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 20px 20px 20px;
+  border-style: solid;
+  border-color: transparent transparent var(--color-white) transparent;
+}
+
+.chat-text {
+  font-size: 48px;
+  color: var(--theme-text-main);
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* 底部按钮 (960x120px) */
+.action-btn {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 960px;
+  height: 120px;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-size: 48px;
+  font-weight: bold;
+  border-radius: 60px;
+  box-shadow: var(--btn-shadow);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.action-btn:active {
+  transform: translateX(-50%) scale(0.98);
+  box-shadow: var(--btn-shadow-pressed);
+}

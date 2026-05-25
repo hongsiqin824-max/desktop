@@ -1,0 +1,763 @@
+/* 问诊页面样式 */
+
+/* ── 整体容器 ───────────────────────────────────────────── */
+.consultation-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--color-beige-100) 0%, var(--color-beige-50) 60%, var(--color-white) 100%);
+  overflow: hidden;
+}
+
+/* ── 问诊进度条 ──────────────────────────────────────────── */
+.progress-bar-area {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 60px 10px;
+  background: var(--color-beige-100);
+}
+
+.progress-label {
+  font-size: 24px;
+  color: var(--theme-primary);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+.progress-track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-beige-300);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--theme-primary), var(--theme-primary-light));
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* ── 顶部：医生形象区 ────────────────────────────────────── */
+.doctor-section {
+  flex: 0 0 1152px;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--color-beige-500) 0%, var(--color-beige-100) 100%);
+}
+
+.doctor-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+/* 医生名称标牌 */
+.doctor-badge {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--badge-bg);
+  border-radius: 40px;
+  padding: 12px 40px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--badge-shadow);
+}
+
+.doctor-badge-dot {
+  width: 16px;
+  height: 16px;
+  background-color: var(--online-dot-color);
+  border-radius: 50%;
+  animation: doctorOnline 2s ease-in-out infinite;
+}
+
+@keyframes doctorOnline {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+.doctor-badge-name {
+  font-size: 30px;
+  color: var(--doctor-badge-text);
+  font-weight: bold;
+}
+
+/* ── 中间：对话区 ────────────────────────────────────────── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  scroll-behavior: smooth;
+}
+
+/* 单条消息行 */
+.chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.chat-msg.user {
+  flex-direction: row-reverse;
+}
+
+/* 头像 */
+.chat-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: var(--doctor-shadow);
+}
+
+.chat-avatar-user {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--chat-user-bg), var(--chat-user-bg-light));
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: var(--color-white);
+  box-shadow: var(--chat-user-shadow);
+}
+
+/* 气泡 */
+.chat-bubble-doctor {
+  max-width: 780px;
+  background: var(--chat-doctor-bg);
+  border-radius: 8px 32px 32px 32px;
+  padding: 32px 40px;
+  font-size: 38px;
+  color: var(--chat-doctor-text);
+  line-height: 1.65;
+  box-shadow: var(--chat-doctor-shadow);
+  white-space: pre-wrap;
+}
+
+.chat-bubble-user {
+  max-width: 680px;
+  background: linear-gradient(135deg, var(--chat-user-bg), var(--chat-user-bg-light));
+  border-radius: 32px 8px 32px 32px;
+  padding: 28px 40px;
+  font-size: 38px;
+  color: var(--chat-user-text);
+  line-height: 1.65;
+  box-shadow: var(--chat-user-shadow);
+}
+
+/* 打字机效果光标 */
+.typing-cursor {
+  display: inline-block;
+  width: 4px;
+  height: 38px;
+  background: var(--typing-cursor-bg);
+  margin-left: 4px;
+  animation: blink 0.8s step-end infinite;
+  vertical-align: middle;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* 思考状态气泡：LLM分析期间显示文字提示 */
+.thinking-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+}
+
+.thinking-icon {
+  font-size: 36px;
+}
+
+.thinking-text {
+  font-size: 30px;
+  color: var(--typing-cursor-bg);
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── 选项按钮组 ─────────────────────────────────────────── */
+.options-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 0 60px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.option-btn {
+  height: 100px;
+  padding: 0 48px;
+  background: var(--option-bg);
+  border: 3px solid var(--option-border);
+  border-radius: 50px;
+  font-size: 40px;
+  color: var(--option-text);
+  font-weight: bold;
+  transition: all 0.18s ease;
+  box-shadow: var(--option-shadow);
+}
+
+.option-btn:active {
+  background: var(--option-active-bg);
+  color: var(--option-active-text);
+  border-color: var(--option-active-border);
+  transform: scale(0.96);
+}
+
+/* ── 底部输入区 ──────────────────────────────────────────── */
+.input-area {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 28px 60px 50px 60px;
+  background: var(--theme-surface);
+  box-shadow: var(--shadow-overlay);
+  border-top: 1px solid var(--input-area-border);
+}
+
+/* 纯语音输入区：居中显示麦克风按钮 */
+.input-area.voice-only {
+  justify-content: center;
+}
+
+/* 重新选择按钮：撤销上次回答并重新作答 */
+.reselect-btn {
+  height: 80px;
+  padding: 0 36px;
+  border-radius: 40px;
+  background: var(--theme-surface);
+  border: 2px solid var(--input-border);
+  font-size: 32px;
+  color: var(--input-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.reselect-btn:hover {
+  border-color: var(--input-border-focus);
+  background: var(--input-bg-warm);
+}
+
+.reselect-btn:active {
+  transform: scale(0.95);
+}
+
+.text-input {
+  flex: 1;
+  height: 100px;
+  background: var(--input-bg-warm);
+  border: 2px solid var(--input-border);
+  border-radius: 50px;
+  padding: 0 40px;
+  font-size: 38px;
+  color: var(--input-text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.text-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+.text-input:focus {
+  border-color: var(--input-border-focus);
+}
+
+/* 发送按钮 */
+.send-btn {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--chat-user-bg), var(--theme-primary-light));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  color: var(--color-white);
+  box-shadow: var(--btn-shadow);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.send-btn:active {
+  transform: scale(0.93);
+}
+
+/* 麦克风按钮 */
+.mic-btn {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--mic-bg);
+  border: 3px solid var(--mic-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.mic-btn.listening {
+  background: linear-gradient(135deg, var(--mic-listening-bg), var(--color-red-700));
+  border-color: var(--mic-listening-border);
+  animation: micPulse 1s ease-in-out infinite;
+  color: var(--color-white);
+}
+
+.mic-btn.processing {
+  background: linear-gradient(135deg, var(--mic-processing-bg), var(--color-orange-600));
+  border-color: var(--mic-processing-border);
+  color: var(--color-white);
+}
+
+@keyframes micPulse {
+  0%, 100% { box-shadow: var(--mic-pulse-shadow-start); }
+  50% { box-shadow: var(--mic-pulse-shadow-end); }
+}
+
+/* ── 语音状态浮层提示 ──────────────────────────────────── */
+.voice-toast {
+  position: absolute;
+  bottom: 230px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--voice-toast-bg);
+  color: var(--voice-toast-text);
+  border-radius: 30px;
+  padding: 28px 60px;
+  font-size: 38px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  z-index: 100;
+  animation: fadeInUp 0.25s ease;
+}
+
+.voice-toast-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 40px;
+}
+
+.wave-bar {
+  width: 8px;
+  background: var(--color-white);
+  border-radius: 4px;
+  animation: waveBounce 0.6s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) { animation-delay: 0s; height: 16px; }
+.wave-bar:nth-child(2) { animation-delay: 0.1s; height: 28px; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; height: 40px; }
+.wave-bar:nth-child(4) { animation-delay: 0.1s; height: 28px; }
+.wave-bar:nth-child(5) { animation-delay: 0s; height: 16px; }
+
+@keyframes waveBounce {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── 错误提示 ──────────────────────────────────────────── */
+.error-toast {
+  position: absolute;
+  bottom: 230px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--error-toast-bg);
+  color: var(--error-toast-text);
+  border-radius: 30px;
+  padding: 28px 60px;
+  font-size: 36px;
+  z-index: 100;
+  white-space: nowrap;
+  max-width: 900px;
+  text-align: center;
+  white-space: normal;
+  animation: fadeInUp 0.25s ease;
+}
+
+/* ── 舌脉采集浮层 ────────────────────────────────────── */
+.capture-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--capture-overlay-bg);
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.capture-card {
+  width: 800px;
+  background: var(--capture-card-bg);
+  border-radius: 40px;
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: var(--capture-card-shadow);
+}
+
+.capture-icon {
+  font-size: 120px;
+  margin-bottom: 40px;
+}
+
+.capture-title {
+  font-size: 44px;
+  font-weight: bold;
+  color: var(--capture-title-text);
+  margin-bottom: 40px;
+}
+
+.capture-progress-bar {
+  width: 100%;
+  height: 16px;
+  background: var(--capture-progress-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 30px;
+}
+
+.capture-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--chat-user-bg), var(--theme-primary-light));
+  border-radius: 8px;
+  transition: width 0.05s linear;
+}
+
+.capture-tip {
+  font-size: 32px;
+  color: var(--capture-tip-text);
+  text-align: center;
+}
+
+.capture-success-icon {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--capture-success-bg), var(--capture-success-bg-light));
+  color: var(--color-white);
+  font-size: 60px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 30px;
+  animation: successPulse 0.6s ease;
+}
+
+@keyframes successPulse {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.capture-success-text {
+  font-size: 44px;
+  font-weight: bold;
+  color: var(--capture-success-text);
+  text-align: center;
+}
+
+/* ── 舌脉分析结果卡片样式 ───────────────────────────── */
+.chat-bubble-analysis {
+  max-width: 780px !important;
+  font-size: 34px !important;
+  line-height: 1.8 !important;
+  background: var(--analysis-bg) !important;
+  border: 2px solid var(--analysis-border) !important;
+  border-radius: 20px !important;
+  padding: 36px 44px !important;
+}
+
+/* ── 详细问诊汇总气泡 ──────────────────────────────────── */
+.chat-bubble-summary {
+  max-width: 780px !important;
+  font-size: 34px !important;
+  line-height: 1.8 !important;
+  background: var(--summary-bg) !important;
+  border: 2px solid var(--summary-border) !important;
+  border-radius: 20px !important;
+  padding: 36px 44px !important;
+}
+
+/* ── 证型输出引导气泡 ──────────────────────────────────── */
+.chat-bubble-syndrome {
+  max-width: 780px !important;
+  font-size: 36px !important;
+  line-height: 1.7 !important;
+  background: var(--chat-doctor-bg) !important;
+  border-radius: 8px 32px 32px 32px !important;
+  padding: 32px 40px !important;
+}
+
+/* ── 证型输出报告卡片 ──────────────────────────────────── */
+.syndrome-card {
+  width: 100%;
+  max-width: 780px;
+  background: var(--syndrome-card-bg);
+  border: 3px solid var(--syndrome-card-border);
+  border-radius: 24px;
+  padding: 40px 44px;
+  margin-bottom: 10px;
+  box-shadow: var(--syndrome-card-shadow);
+  animation: syndromeCardFadeIn 0.6s ease;
+}
+
+@keyframes syndromeCardFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.syndrome-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-bottom: 30px;
+  border-bottom: 3px solid var(--syndrome-card-border);
+  margin-bottom: 30px;
+}
+
+.syndrome-card-icon {
+  font-size: 48px;
+}
+
+.syndrome-card-title {
+  font-size: 40px;
+  font-weight: bold;
+  color: var(--syndrome-title-text);
+}
+
+.syndrome-card-section {
+  margin-bottom: 28px;
+}
+
+.syndrome-card-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.syndrome-section-title {
+  font-size: 34px;
+  font-weight: bold;
+  color: var(--syndrome-section-title-text);
+  margin-bottom: 16px;
+  padding-left: 16px;
+  position: relative;
+}
+
+.syndrome-section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 24px;
+  background: var(--syndrome-section-title-bar);
+  border-radius: 4px;
+}
+
+.syndrome-section-content {
+  font-size: 30px;
+  color: var(--syndrome-content-text);
+  line-height: 1.7;
+}
+
+.syndrome-highlight-section {
+  background: var(--syndrome-highlight-bg);
+  border: 2px solid var(--syndrome-highlight-border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 28px;
+}
+
+.syndrome-highlight-section .syndrome-section-title {
+  color: var(--syndrome-highlight-title-text);
+}
+
+.syndrome-highlight-section .syndrome-section-title::before {
+  background: var(--syndrome-highlight-title-bar);
+}
+
+.syndrome-tag {
+  display: inline-block;
+  font-size: 30px;
+  font-weight: bold;
+  padding: 8px 24px;
+  border-radius: 24px;
+  margin-right: 16px;
+}
+
+.disease-tag {
+  background: var(--syndrome-disease-tag-bg);
+  color: var(--syndrome-disease-tag-text);
+}
+
+.symptom-tag {
+  background: var(--syndrome-symptom-tag-bg);
+  color: var(--syndrome-symptom-tag-text);
+}
+
+.syndrome-symptom-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.syndrome-symptom-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.syndrome-symptom-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--syndrome-num-bg);
+  color: var(--syndrome-num-text);
+  font-size: 24px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.syndrome-result-name {
+  font-size: 36px;
+  font-weight: bold;
+  color: var(--syndrome-result-name-text);
+  margin-bottom: 16px;
+}
+
+.syndrome-result-detail {
+  font-size: 30px;
+  color: var(--syndrome-result-detail-text);
+  line-height: 1.8;
+}
+
+.syndrome-illustration {
+  font-size: 30px;
+  color: var(--syndrome-illustration-text);
+  line-height: 1.7;
+  white-space: pre-line;
+  background: var(--syndrome-illustration-bg);
+  padding: 24px 28px;
+  border-radius: 12px;
+  border: 1px solid var(--syndrome-illustration-border);
+}
+
+.syndrome-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.syndrome-plan-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.syndrome-plan-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--syndrome-plan-num-bg);
+  color: var(--syndrome-plan-num-text);
+  font-size: 24px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.syndrome-product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.syndrome-product-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--syndrome-product-item-bg);
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--syndrome-product-item-border);
+}
+
+.syndrome-product-badge {
+  font-size: 24px;
+  font-weight: bold;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: var(--syndrome-product-badge-bg);
+  color: var(--syndrome-product-badge-text);
+  flex-shrink: 0;
+}
+
+.syndrome-card-footer {
+  margin-top: 30px;
+  padding-top: 24px;
+  border-top: 2px solid var(--syndrome-card-border);
+}
+
+.syndrome-footer-tip {
+  font-size: 26px;
+  color: var(--syndrome-footer-tip-text);
+  text-align: center;
+  line-height: 1.6;
+}

@@ -1,0 +1,805 @@
+<script setup lang="ts">
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { useUserStore } from '@/stores/global/user'
+import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
+import { useTTS } from '@/composables/useTTS'
+import type { PersonaType } from '@/composables/useTTS'
+import { useLLM } from '@/composables/useLLM'
+import type { IIntentResult } from '@/types/llm'
+import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
+import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput } from '@/types/consultation'
+import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
+import { DETAIL_QUESTION_MAP, COLD_QUESTIONS } from '@/data/consultationDetail'
+import { generateMockSyndromeOutput } from '@/data/syndromeOutput'
+import { useDetailQuestion } from '@/composables/useDetailQuestion'
+import { useSelfFeature } from '@/composables/useSelfFeature'
+
+import './styles/ConsultationView.css'
+
+// ── 用户信息 ─────────────────────────────────────────────────
+const userStore = useUserStore()
+const userName = computed(() => userStore.userInfo.name || '朋友')
+const userInfo = computed(() => userStore.userInfo)
+
+// ── 对话记录 ─────────────────────────────────────────────────
+const messages = ref<IChatMessage[]>([])
+const chatAreaRef = ref<HTMLElement | null>(null)
+
+// ── 流程状态 ─────────────────────────────────────────────────
+const currentStepId = ref<StepIdType>('initial')
+const currentSymptom = ref('症状')
+const detailBranch = ref<string>('')
+const detailQuestionQueue = ref<string[]>([])
+const detailIsFirstQuestion = ref<boolean>(true)
+
+// ── 舌脉采集状态 ─────────────────────────────────────────────
+const isCapturing = ref(false)
+const captureType = ref<'tongue_top' | 'tongue_bottom' | 'pulse' | null>(null)
+const captureProgress = ref(0)
+const captureCompleted = ref(false)
+const captureProgressIntervalId = ref<number | null>(null)
+const captureStartTimerId = ref<number | null>(null)
+const autoAdvanceTimerId = ref<number | null>(null)
+const analysisData = ref<typeof MOCK_ANALYSIS[string] | null>(null)
+
+// ── 证型输出状态 ─────────────────────────────────────────────
+const syndromeOutputData = ref<ISyndromeOutput | null>(null)
+
+// ── 输入框 ───────────────────────────────────────────────────
+const inputText = ref('')
+const isTyping = ref(false)
+const clarificationCandidates = ref<string[]>([])
+
+// ── TTS / LLM / 语音识别 ────────────────────────────────────
+const { isSpeaking: ttsIsSpeaking, speakSync: ttsSpeakSync, stop: ttsStop } = useTTS()
+const { isLoading: llmIsLoading, recognizeIntent, classifyOption } = useLLM()
+const { status: speechStatus, errorMessage: speechError, transcript: speechTranscript, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
+const showVoiceToast = ref(false)
+const showErrorToast = ref(false)
+const errorToastText = ref('')
+
+// ── 异常回答关键词 ────────────────────────────────────────────
+const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS } = KEYWORD_CONFIG
+const invalidRetryCount = ref(0)
+
+// ── 工具函数 ─────────────────────────────────────────────────
+const scrollToBottom = async () => {
+  await nextTick()
+  if (chatAreaRef.value) {
+    chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
+  }
+}
+
+const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') => {
+  return new Promise<void>((resolve) => {
+    isTyping.value = true
+    let msgIdx = -1
+    setTimeout(async () => {
+      await ttsSpeakSync(text, persona, (char) => {
+        if (msgIdx === -1) {
+          msgIdx = messages.value.length
+          messages.value.push({ role: persona, text: '' })
+          isTyping.value = false
+        }
+        messages.value[msgIdx]!.text += char
+        scrollToBottom()
+      })
+      if (msgIdx === -1) {
+        messages.value.push({ role: persona, text })
+      } else {
+        messages.value[msgIdx]!.text = text
+      }
+      isTyping.value = false
+      await scrollToBottom()
+      resolve()
+    }, delay)
+  })
+}
+
+const clearTimers = () => {
+  if (autoAdvanceTimerId.value) { clearTimeout(autoAdvanceTimerId.value); autoAdvanceTimerId.value = null }
+  if (captureStartTimerId.value) { clearTimeout(captureStartTimerId.value); captureStartTimerId.value = null }
+  if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
+  ttsStop()
+  isCapturing.value = false
+  captureType.value = null
+  captureProgress.value = 0
+  captureCompleted.value = false
+}
+
+// ── 初始化组合式函数（goToStep 通过 lambda 延迟引用，避免暂时性死区）──
+const detail = useDetailQuestion({
+  currentSymptom, messages, detailIsFirstQuestion, detailBranch, detailQuestionQueue,
+  goToStep: (stepId, symptom?) => goToStep(stepId, symptom),
+  doctorSay, scrollToBottom,
+})
+
+const selfFeature = useSelfFeature({
+  userInfo, messages,
+  goToStep: (stepId, symptom?) => goToStep(stepId, symptom),
+  doctorSay, scrollToBottom,
+})
+
+// ── 步骤计算 ─────────────────────────────────────────────────
+const currentStep = computed(() => {
+  if (currentStepId.value === 'detail_question') {
+    if (detail.detailSeverityPending.value) {
+      return {
+        id: 'detail_question' as StepIdType,
+        doctorText: `请问${detail.detailSeverityPending.value.subjectText}的程度是较轻还是较重？`,
+        options: [
+          { label: '较轻', nextStep: 'detail_question' as StepIdType, payload: undefined },
+          { label: '较重', nextStep: 'detail_question' as StepIdType, payload: undefined },
+        ] as IChatOption[],
+        isFreeInput: false, isEnd: false,
+      }
+    }
+
+    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
+    const question = questionSet[detail.detailQuestionCategory.value]
+    if (!question) return FLOW_STEPS['detail_question']
+    const answeredTaCodes = new Set(detail.detailAnswers.value.map(a => a.taCode))
+    const filteredOptions = question.options.filter((opt: any) => {
+      if (!opt.excludeAfter) return true
+      return !opt.excludeAfter.some((excluded: string) => answeredTaCodes.has(excluded))
+    })
+    return {
+      id: 'detail_question' as StepIdType,
+      doctorText: question.doctorText,
+      options: filteredOptions.map((opt: any) => ({ label: opt.label, nextStep: 'detail_question' as StepIdType, payload: undefined })) as IChatOption[],
+      isFreeInput: question.isFreeInput ?? false, isEnd: false,
+    }
+  }
+  if (currentStepId.value === 'self_feature_question') {
+    return selfFeature.buildSelfFeatureStep()
+  }
+  return FLOW_STEPS[currentStepId.value]
+})
+
+// ── 意图步骤集合 ─────────────────────────────────────────────
+const INTENT_STEPS: Set<StepIdType> = new Set([
+  'initial', 'branch_a_free', 'branch_b_symptom', 'branch_b_clarify',
+  'branch_c_condition', 'branch_c_clarify', 'severity',
+])
+const isIntentStep = computed(() => INTENT_STEPS.has(currentStepId.value))
+const isSelfFeaturePhase = computed(() =>
+  currentStepId.value === 'self_feature_intro' || currentStepId.value === 'self_feature_question' || currentStepId.value === 'self_feature_summary'
+)
+
+const progressPercent = computed(() => {
+  const phases: [Set<StepIdType>, number][] = [
+    [new Set(['initial', 'branch_a_free', 'branch_b_symptom', 'branch_b_clarify', 'branch_c_condition', 'branch_c_clarify', 'severity', 'end_moderate']), 15],
+    [new Set(['tongue_top_intro', 'tongue_bottom_intro', 'pulse_intro', 'pulse_done', 'analysis_review', 'analysis_normal', 'analysis_abnormal', 'analysis_continue', 'analysis_fail']), 40],
+    [new Set(['detail_transition', 'detail_question', 'detail_summary', 'detail_done']), 70],
+    [new Set(['self_feature_intro', 'self_feature_question', 'self_feature_summary', 'self_feature_done']), 85],
+    [new Set(['syndrome_output']), 100],
+  ]
+  for (const [steps, percent] of phases) {
+    if (steps.has(currentStepId.value)) return percent
+  }
+  return 0
+})
+
+const canReselect = computed(() => lastSnapshot.value !== null && !isTyping.value && !ttsIsSpeaking.value && !llmIsLoading.value && !currentStep.value.isEnd && !isCapturing.value)
+
+// ── LLM 结果处理 ─────────────────────────────────────────────
+const SYMPTOM_ALIAS: Record<string, string> = {
+  '伤风': '感冒', '外感': '感冒', '发热': '发热', '怕冷': '怕冷',
+  '恶寒': '怕冷', '头疼': '头痛', '咳': '咳嗽', '流鼻涕': '感冒',
+  '鼻塞': '感冒', '乏力': '慢性疲劳', '睡不着': '失眠', '多梦': '失眠',
+  '血压高': '血压偏高', '肚子大': '腹型肥胖', '生气': '肝郁气滞',
+}
+const UNSUPPORTED_SYMPTOMS = new Set(['发热', '怕冷', '血压偏高', '腹型肥胖', '脂肪肝', '肝郁气滞'])
+
+const processLLMResult = (result: IIntentResult): boolean => {
+  if (result.intent === null) return false
+  const isInConsultation = currentStepId.value === 'detail_question' || currentStepId.value === 'detail_summary'
+    || currentStepId.value === 'self_feature_question' || currentStepId.value === 'self_feature_summary'
+    || currentStepId.value === 'severity' || currentStepId.value === 'detail_transition'
+    || currentStepId.value === 'detail_done' || currentStepId.value === 'tongue_top_intro'
+    || currentStepId.value === 'tongue_bottom_intro' || currentStepId.value === 'pulse_intro'
+    || currentStepId.value === 'pulse_done' || currentStepId.value === 'analysis_review'
+    || currentStepId.value === 'analysis_abnormal' || currentStepId.value === 'analysis_fail'
+
+  if (result.intent === 'none') {
+    if (isInConsultation) return false
+    if (result.subType === 'major_disease') goToStep('end_a_major')
+    else if (result.subType === 'product') goToStep('end_a_product')
+    else goToStep('end_a_other')
+    return true
+  }
+
+  if (result.intent === 'acute') {
+    const mapped = SYMPTOM_ALIAS[result.symptom!] || result.symptom
+    if (mapped) currentSymptom.value = mapped
+    if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
+    if (result.severity === 'severe') { goToStep('end_severe'); return true }
+    if (result.severity === 'moderate' || result.severity === 'mild') { goToStep('end_moderate'); return true }
+    goToStep(mapped ? 'severity' : 'branch_b_symptom')
+    return true
+  }
+
+  if (result.intent === 'chronic') {
+    const mapped = SYMPTOM_ALIAS[result.symptom!] || result.symptom
+    if (mapped) currentSymptom.value = mapped
+    if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
+    if (result.severity === 'severe') { goToStep('end_severe'); return true }
+    if (result.severity === 'moderate' || result.severity === 'mild') { goToStep('end_moderate'); return true }
+    goToStep(mapped ? 'severity' : 'branch_c_condition')
+    return true
+  }
+
+  return false
+}
+
+// ── 快照 / 重新选择 ──────────────────────────────────────────
+const lastSnapshot = ref<IStepSnapshot | null>(null)
+
+const saveSnapshot = () => {
+  lastSnapshot.value = {
+    stepId: currentStepId.value, symptom: currentSymptom.value, messagesLength: messages.value.length,
+    detailQuestionCategory: detail.detailQuestionCategory.value, detailBranch: detailBranch.value,
+    detailQuestionQueue: [...detailQuestionQueue.value], detailAskedCategories: [...detail.detailAskedCategories.value],
+    detailAnswers: [...detail.detailAnswers.value], detailIsFirstQuestion: detailIsFirstQuestion.value,
+    detailSeverityPending: detail.detailSeverityPending.value ? { ...detail.detailSeverityPending.value } : null,
+    detailFailCount: detail.detailFailCount.value, invalidRetryCount: invalidRetryCount.value,
+    selfFeatureSubStep: selfFeature.selfFeatureSubStep.value, selfFeatureRecords: [...selfFeature.selfFeatureRecords.value],
+    selfFeatureCurrentLocation: selfFeature.selfFeatureCurrentLocation.value,
+    selfFeatureCurrentLocationZone: selfFeature.selfFeatureCurrentLocationZone.value,
+    selfFeatureCurrentSymptom: selfFeature.selfFeatureCurrentSymptom.value,
+    selfFeatureCurrentSymptomCategory: selfFeature.selfFeatureCurrentSymptomCategory.value,
+    selfFeatureCurrentSymptomBaseCode: selfFeature.selfFeatureCurrentSymptomBaseCode.value,
+    selfFeatureCurrentSymptomFixedTaCode: selfFeature.selfFeatureCurrentSymptomFixedTaCode.value,
+    selfFeatureExpandKey: selfFeature.selfFeatureExpandKey.value,
+    analysisData: analysisData.value, syndromeOutputData: syndromeOutputData.value,
+  }
+}
+
+const reselectCurrentAnswer = async () => {
+  const snap = lastSnapshot.value
+  if (!snap) return
+  clearTimers(); ttsStop()
+  currentStepId.value = snap.stepId; currentSymptom.value = snap.symptom
+  messages.value.splice(snap.messagesLength)
+  detail.detailQuestionCategory.value = snap.detailQuestionCategory
+  detailBranch.value = snap.detailBranch
+  detailQuestionQueue.value = [...snap.detailQuestionQueue]
+  detail.detailAskedCategories.value = new Set(snap.detailAskedCategories)
+  detail.detailAnswers.value = [...snap.detailAnswers]
+  detailIsFirstQuestion.value = snap.detailIsFirstQuestion
+  detail.detailSeverityPending.value = snap.detailSeverityPending
+  detail.detailFailCount.value = snap.detailFailCount
+  invalidRetryCount.value = snap.invalidRetryCount
+  selfFeature.selfFeatureSubStep.value = snap.selfFeatureSubStep
+  selfFeature.selfFeatureRecords.value = [...snap.selfFeatureRecords]
+  selfFeature.selfFeatureCurrentLocation.value = snap.selfFeatureCurrentLocation
+  selfFeature.selfFeatureCurrentLocationZone.value = snap.selfFeatureCurrentLocationZone
+  selfFeature.selfFeatureCurrentSymptom.value = snap.selfFeatureCurrentSymptom
+  selfFeature.selfFeatureCurrentSymptomCategory.value = snap.selfFeatureCurrentSymptomCategory
+  selfFeature.selfFeatureCurrentSymptomBaseCode.value = snap.selfFeatureCurrentSymptomBaseCode
+  selfFeature.selfFeatureCurrentSymptomFixedTaCode.value = snap.selfFeatureCurrentSymptomFixedTaCode
+  selfFeature.selfFeatureExpandKey.value = snap.selfFeatureExpandKey
+  analysisData.value = snap.analysisData; syndromeOutputData.value = snap.syndromeOutputData
+  lastSnapshot.value = null
+  await scrollToBottom()
+}
+
+// ── 步骤切换时重置计数 ───────────────────────────────────────
+watch(currentStepId, () => {
+  invalidRetryCount.value = 0; detail.resetCounters()
+  clarificationCandidates.value = []
+})
+
+// ── 采集时序参数 ─────────────────────────────────────────────
+const CAPTURE_READING_DELAY = 2000
+const CAPTURE_SUCCESS_DELAY = 800
+
+// ── 处理流程跳转 ─────────────────────────────────────────────
+const goToStep = async (stepId: StepIdType, symptom?: string) => {
+  clearTimers()
+  if (symptom) currentSymptom.value = symptom
+
+  if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value) && (stepId === 'severity' || stepId === 'detail_transition' || stepId === 'detail_question')) {
+    stepId = 'end_unsupported_symptom'
+  }
+
+  currentStepId.value = stepId
+  const step = FLOW_STEPS[stepId]
+  let text = step.doctorText
+
+  if (stepId === 'severity') {
+    text = `请问您的【${currentSymptom.value}】严重吗？`
+  }
+  if (stepId === 'analysis_review') {
+    const data = MOCK_ANALYSIS[currentSymptom.value] ?? MOCK_ANALYSIS['感冒']!
+    analysisData.value = data
+    text = `根据系统分析，我这边看到的情况如下，请您确认是否与您目前的状态相符：
+
+舌象分析：
+• 舌苔厚薄：${data.tongueCoating}
+• 舌质颜色：${data.tongueColor}
+• 舌质大小：${data.tongueSize}
+• 舌下状态：${data.tongueBottom}
+
+脉象分析：
+• 脉象特征：${data.pulseType}
+• 脉搏次数：${data.pulseRate}次/分`
+  }
+  if (stepId === 'analysis_normal') text = generateResponse('ANALYSIS_CONFIRM_NORMAL', { symptom: currentSymptom.value })
+  if (stepId === 'detail_transition') text = generateResponse('DETAIL_TRANSITION', { symptom: currentSymptom.value })
+  if (stepId === 'detail_question' && detailIsFirstQuestion.value) {
+    const firstCategory = detail.initFirstQuestion(currentSymptom.value)
+    text = detail.getFirstQuestionText(currentSymptom.value, firstCategory)
+  }
+  if (stepId === 'detail_summary') {
+    const summary = detail.detailAnswers.value.map(a => a.label).join('、')
+    text = generateResponse('DETAIL_SUMMARY', { summary })
+  }
+  if (stepId === 'self_feature_intro') {
+    selfFeature.resetSelfFeature()
+    text = '接下来，我想了解一下您身体其他部位是否还有不适的感觉？比如某个位置疼痛、发麻、发胀等，您可以逐个告诉我，最多可以描述5个部位的不适。'
+  }
+  if (stepId === 'self_feature_summary') text = selfFeature.getSummaryText()
+  if (stepId === 'syndrome_output') {
+    const output = generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
+    syndromeOutputData.value = output
+    text = '好的，根据您提供的所有信息，辨证分析已经完成，以下是您的辨证分析报告：'
+  }
+
+  // 发送消息（特殊类型标记）
+  if (stepId === 'analysis_review') {
+    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'analysis'
+  } else if (stepId === 'detail_summary') {
+    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'summary'
+  } else if (stepId === 'self_feature_summary') {
+    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg && selfFeature.selfFeatureRecords.value.length > 0) lastMsg.type = 'summary'
+  } else if (stepId === 'syndrome_output') {
+    await doctorSay(text, 1200); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'syndrome'
+  } else {
+    await doctorSay(text)
+  }
+
+  // 启动采集动画
+  if (step.captureType && step.autoAdvance) {
+    const totalDelay = step.autoAdvance.delay
+    const captureDuration = totalDelay - CAPTURE_READING_DELAY - CAPTURE_SUCCESS_DELAY
+    captureStartTimerId.value = window.setTimeout(() => {
+      isCapturing.value = true; captureType.value = step.captureType!
+      captureProgress.value = 0; captureCompleted.value = false
+      const stepMs = 50; const progressStep = 100 / (captureDuration / stepMs)
+      captureProgressIntervalId.value = window.setInterval(() => {
+        captureProgress.value += progressStep
+        if (captureProgress.value >= 100) {
+          captureProgress.value = 100; captureCompleted.value = true
+          if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
+        }
+      }, stepMs)
+    }, CAPTURE_READING_DELAY)
+  }
+
+  if (step.autoAdvance) {
+    autoAdvanceTimerId.value = window.setTimeout(() => { clearTimers(); goToStep(step.autoAdvance!.nextStep) }, step.autoAdvance.delay)
+  }
+}
+
+// ── 处理选项点击 ─────────────────────────────────────────────
+const onOptionClick = async (label: string, nextStep: StepIdType, payload?: string) => {
+  saveSnapshot(); clearTimers()
+
+  if (currentStepId.value === 'detail_question') {
+    await detail.handleDetailOptionClick(label); return
+  }
+  if (currentStepId.value === 'self_feature_question') {
+    await selfFeature.handleSelfFeatureOptionClick(label); return
+  }
+
+  // 舌脉分析确认：异常分支
+  if (currentStepId.value === 'analysis_review' && label === '确认相符' && analysisData.value?.isAbnormal) {
+    await goToStep('analysis_abnormal'); return
+  }
+
+  messages.value.push({ role: 'user', text: label })
+  await scrollToBottom()
+  await goToStep(nextStep, payload)
+}
+
+// ── 第三层级兜底追问 ─────────────────────────────────────────
+const buildFallbackQuestion = (): string => {
+  const stepId = currentStepId.value; const symptom = currentSymptom.value
+  const step = currentStep.value; const optionLabels = step.options?.map(opt => opt.label).join('、') ?? ''
+
+  if (step.isEnd) return generateResponse('D_REFUSAL')
+
+  switch (stepId) {
+    case 'initial': return '为了准确了解您的情况，请问您是有突发不适症状，还是想调理亚健康状态？您可以直接说"突发不适""调理亚健康"或"都不是"。'
+    case 'severity': return `您说的我没太理解，请问您的【${symptom || '症状'}】是特别严重、比较难受，还是只有一点点不舒服？您可以直接说"很严重""比较重"或"较轻"。`
+    case 'analysis_review': return '您说的我没太理解，请问舌脉分析结果和您的实际情况是否相符？如果感觉不太准，可以说"不对"或"有问题"；如果相符，可以说"对的"或"没问题"。'
+    case 'analysis_abnormal': return '您说的我没太理解，请问您是想继续通过药食同源产品调理，还是想先去医院检查一下？您可以直接说"继续调理"或"去医院"。'
+    case 'analysis_fail': return '您说的我没太理解，请问是想重新采集舌脉信息，还是暂时不采集了？您可以直接说"重新采集"或"算了，暂时不采"。'
+    case 'detail_summary': return '您说的我没太理解，请问前面的问诊信息是否准确无误？您可以直接说"确认提交"或者"需要修改，重新填写"。'
+    case 'self_feature_summary': return '您说的我没太理解，请问自选特征信息是否确认无误？您可以直接说"确认提交"或者"选错了，重新选择"。'
+    case 'branch_a_free': return '方便再具体说一下您的需求吗？比如您是想了解产品、有重大疾病需要就医，还是其他方面的问题？'
+    case 'branch_b_symptom': return '方便再具体说一下您的不适吗？比如是感冒、头痛、咳嗽，还是其他症状？'
+    case 'branch_b_clarify': return '方便描述一下您的具体不适吗？比如头痛、发热、怕冷、流鼻涕等？'
+    case 'branch_c_condition': return '方便再具体说一下您亚健康的表现吗？比如是慢性疲劳、失眠，还是其他状态？'
+    case 'branch_c_clarify': return '方便描述一下您的具体状态吗？比如乏力、血压偏高、肝郁气滞等？'
+    case 'end_a_other': return '您可以直接说"我想重新问诊"继续问诊，或说"确实不需要"结束本次对话。'
+    default: break
+  }
+
+  if (stepId === 'detail_question') {
+    if (detail.detailSeverityPending.value) {
+      return `您说的我没太理解，请问${detail.detailSeverityPending.value.subjectText}的程度是较轻还是较重？您可以直接说"较轻"或"较重"。`
+    }
+
+    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
+    const question = questionSet[detail.detailQuestionCategory.value]
+    if (question) {
+      const labels = question.options.map((opt: any) => opt.label).join('、')
+      return `您说的我没太理解，${question.doctorText.replace(/如果不太理解.*$/, '')}您可以直接说：${labels}。`
+    }
+    return '请您简单描述一下您的感受，我会帮您匹配到对应的选项。'
+  }
+
+  if (stepId === 'self_feature_question') {
+    if (selfFeature.selfFeatureSubStep.value === 'location') return '您说的我没太理解，请告诉我不舒服在哪个部位？比如头、脖子、肩膀、腰、腿等。如果没有其他不适了，可以说"没有了"。'
+    if (selfFeature.selfFeatureSubStep.value === 'nature' || selfFeature.selfFeatureSubStep.value === 'nature_expand') return '您说的我没太理解，请问这种不适具体是什么感觉？比如热痛、冷痛、胀痛、麻木、痒等。如果想看更多选项，可以说"更多疼痛类"或"外观变化类"。'
+    if (selfFeature.selfFeatureSubStep.value === 'severity') return `您说的我没太理解，请问${selfFeature.selfFeatureCurrentSymptom.value}的程度如何？您可以直接说"较轻"或"较重"。`
+    if (selfFeature.selfFeatureSubStep.value === 'continue') return '您说的我没太理解，请问还有其他部位不适吗？您可以直接说"继续添加"或"没有了，就这些"。'
+  }
+
+  if (step.options && step.options.length > 0) return `您说的我没太理解，这道题请您直接从以下选项中选择：${optionLabels}。`
+  return generateResponse('D_VAGUE')
+}
+
+// ── 处理自由文本/语音转文字提交 ───────────────────────────────
+const onSubmitText = async (text: string) => {
+  const step = currentStep.value
+  const isTransitionStep = step.autoAdvance && !(step.options && step.options.length > 0) && !step.isFreeInput
+  if (isTransitionStep) return
+
+  clearTimers()
+
+  // 空输入处理
+  if (!text.trim()) {
+    invalidRetryCount.value++
+    if (invalidRetryCount.value >= RETRY_CONFIG.maxEmptyRetries) {
+      await doctorSay(generateResponse('O_EMPTY_3'))
+      const fallback = REFUSAL_FALLBACK[currentStepId.value]
+      if (fallback) await goToStep(fallback)
+      invalidRetryCount.value = 0; return
+    }
+    if (step.options && step.options.length > 0) {
+      const optionLabels = step.options.map(opt => opt.label).join('、')
+      if (invalidRetryCount.value === 1) await doctorSay(generateResponse('O_EMPTY_1', { optionLabels }))
+      else await doctorSay(generateResponse('O_EMPTY_2'))
+    } else {
+      if (invalidRetryCount.value === 1) await doctorSay(generateResponse('D_EMPTY_1'))
+      else await doctorSay(generateResponse('D_EMPTY_2'))
+    }
+    return
+  }
+
+  inputText.value = ''; saveSnapshot()
+  messages.value.push({ role: 'user', text }); await scrollToBottom()
+  invalidRetryCount.value = 0
+
+  // 拒答检测
+  if (REFUSAL_KEYWORDS.some(kw => text.includes(kw))) {
+    await doctorSay(generateResponse('O_REFUSAL'))
+    const fallback = REFUSAL_FALLBACK[currentStepId.value]
+    if (fallback) await goToStep(fallback); return
+  }
+  // 不确定检测
+  if (UNCERTAIN_KEYWORDS.some(kw => text.includes(kw))) {
+    await doctorSay(generateResponse('UNCERTAIN'))
+    const fallback = REFUSAL_FALLBACK[currentStepId.value]
+    if (fallback) await goToStep(fallback); return
+  }
+
+  // ── 大模型分类 ─────────────────────────────────────────────
+  const hasOptions = step.options && step.options.length > 0
+  const isIntent = INTENT_STEPS.has(currentStepId.value)
+
+  if (isIntent) {
+    isTyping.value = true
+    const result = await recognizeIntent(text, currentStepId.value, currentSymptom.value); isTyping.value = false
+    if (result && processLLMResult(result)) { invalidRetryCount.value = 0; return }
+  } else if (hasOptions) {
+    isTyping.value = true
+    let currentDoctorText: string | undefined
+    let llmOptions: { label: string; semanticDesc?: string }[]
+
+    if (currentStepId.value === 'detail_question') {
+  
+      const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
+      const question = questionSet[detail.detailQuestionCategory.value]
+      currentDoctorText = question?.doctorText
+      llmOptions = (question?.options || step.options!).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+    } else {
+      llmOptions = (step.options as any[]).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+    }
+
+    if (clarificationCandidates.value.length >= 2) {
+      llmOptions = llmOptions.filter(opt => clarificationCandidates.value.includes(opt.label))
+    }
+
+    const optionResult = await classifyOption(text, currentStepId.value, llmOptions, currentDoctorText); isTyping.value = false
+
+    if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
+      clarificationCandidates.value = []
+      const matched = step.options!.find(opt => opt.label === optionResult.matchedLabel)
+      if (matched) {
+        if (currentStepId.value === 'detail_question' || currentStepId.value === 'self_feature_question') {
+          detail.detailFailCount.value = 0
+          const lastIdx = messages.value.length - 1
+          if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+          await onOptionClick(matched.label, matched.nextStep, matched.payload); return
+        }
+        await goToStep(matched.nextStep, matched.payload); return
+      }
+    }
+
+    if (optionResult && optionResult.matchedLabels.length >= 2 && optionResult.clarificationQuestion) {
+      const candidates = optionResult.matchedLabels.filter(label => step.options!.some(opt => opt.label === label))
+      if (candidates.length >= 2) { clarificationCandidates.value = candidates; await doctorSay(optionResult.clarificationQuestion); return }
+    }
+  }
+
+  // ── 大模型未匹配时，按步骤类型兜底处理 ─────────────────────
+  switch (currentStepId.value) {
+    case 'severity': {
+      if (GUARANTEE_KEYWORDS.some(kw => text.includes(kw))) await doctorSay(generateResponse('SEVERITY_GUARANTEE'))
+      else await doctorSay(generateResponse('SEVERITY_UNMATCHED', { symptom: currentSymptom.value }))
+      break
+    }
+    case 'detail_question': await detail.handleDetailSubmitText(text); break
+    case 'self_feature_question': await selfFeature.handleSelfFeatureSubmitText(text); break
+    default: await doctorSay(buildFallbackQuestion()); break
+  }
+}
+
+// ── 麦克风按钮 ───────────────────────────────────────────────
+const onMicClick = async () => {
+  ttsStop()
+  if (speechStatus.value === 'listening') { showVoiceToast.value = false; stopSpeech(); return }
+  if (speechStatus.value === 'error') { showVoiceToast.value = false; showErrorToast.value = false; stopSpeech(); return }
+
+  showVoiceToast.value = true; showErrorToast.value = false
+  const text = await startSpeechAndWait(); showVoiceToast.value = false
+
+  if (speechError.value) {
+    showErrorToast.value = true; errorToastText.value = speechError.value || '语音识别失败，请重试'
+    setTimeout(() => { showErrorToast.value = false }, 3000); return
+  }
+  if (text) { inputText.value = text; onSubmitText(text) }
+}
+
+watch(speechTranscript, (val) => { if (speechStatus.value === 'listening' && val) inputText.value = val })
+
+// ── 初始化 ───────────────────────────────────────────────────
+onMounted(async () => {
+  await doctorSay(`${userName.value}您好，我是您的中医师 🌿 接下来我会帮您了解一下身体状况，请放松心情～`, 800)
+  await goToStep('initial')
+})
+onUnmounted(() => { ttsStop() })
+</script>
+
+<template>
+  <div class="consultation-view">
+
+    <!-- 顶部：医生形象 / 自选特征阶段显示人体图 -->
+    <div class="doctor-section">
+      <img
+        v-if="isSelfFeaturePhase"
+        class="doctor-img"
+        src="@/assets/body.png"
+        alt="人体模型"
+      />
+      <img
+        v-else
+        class="doctor-img"
+        src="@/assets/doctor.png"
+        alt="老中医师"
+      />
+      <div class="doctor-badge">
+        <div class="doctor-badge-dot"></div>
+        <div class="doctor-badge-name">{{ isSelfFeaturePhase ? '请指出不适位置' : '中医师 · 在线问诊' }}</div>
+      </div>
+    </div>
+
+    <!-- 问诊进度条 -->
+    <div v-if="progressPercent > 0 && !currentStep.isEnd" class="progress-bar-area">
+      <div class="progress-label">{{ progressPercent }}%</div>
+      <div class="progress-track">
+        <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+      </div>
+    </div>
+
+    <!-- 中间：对话区 -->
+    <div class="chat-area" ref="chatAreaRef">
+      <div
+        v-for="(msg, idx) in messages"
+        :key="idx"
+        class="chat-msg"
+        :class="msg.role"
+      >
+        <!-- 医生头像 -->
+        <img v-if="msg.role === 'doctor'" class="chat-avatar" src="@/assets/doctor.png" alt="老中医师" />
+        <!-- 护士头像 -->
+        <img v-else-if="msg.role === 'nurse'" class="chat-avatar" src="@/assets/assistant.png" alt="护士" />
+        <!-- 用户头像 -->
+        <div v-else class="chat-avatar-user">👤</div>
+
+        <!-- 气泡 -->
+        <div :class="[
+          msg.role !== 'user' ? 'chat-bubble-doctor' : 'chat-bubble-user',
+          msg.type === 'analysis' ? 'chat-bubble-analysis' : '',
+          msg.type === 'summary' ? 'chat-bubble-summary' : '',
+          msg.type === 'syndrome' ? 'chat-bubble-syndrome' : ''
+        ]">
+          {{ msg.text }}
+        </div>
+      </div>
+
+      <!-- 证型输出报告卡片 -->
+      <div v-if="syndromeOutputData" class="syndrome-card" ref="syndromeCardRef">
+        <div class="syndrome-card-header">
+          <span class="syndrome-card-icon">📋</span>
+          <span class="syndrome-card-title">辨证分析报告</span>
+        </div>
+
+        <div class="syndrome-card-section">
+          <div class="syndrome-section-title">一、病种 + 主症</div>
+          <div class="syndrome-section-content">
+            <span class="syndrome-tag disease-tag">{{ syndromeOutputData.diseaseCategory }}</span>
+            <span class="syndrome-tag symptom-tag">{{ syndromeOutputData.mainSymptom }}</span>
+          </div>
+        </div>
+
+        <div class="syndrome-card-section">
+          <div class="syndrome-section-title">二、主要症状</div>
+          <div class="syndrome-section-content">
+            <div class="syndrome-symptom-list">
+              <div v-for="(s, i) in syndromeOutputData.mainSymptoms" :key="i" class="syndrome-symptom-item">
+                <span class="syndrome-symptom-num">{{ i + 1 }}</span>
+                <span>{{ s }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="syndrome-card-section syndrome-highlight-section">
+          <div class="syndrome-section-title">三、辨证结果</div>
+          <div class="syndrome-section-content">
+            <div class="syndrome-result-name">{{ syndromeOutputData.syndromeResult }}</div>
+            <div class="syndrome-result-detail">{{ syndromeOutputData.syndromeDetail }}</div>
+          </div>
+        </div>
+
+        <div class="syndrome-card-section">
+          <div class="syndrome-section-title">四、经络图示</div>
+          <div class="syndrome-section-content">
+            <div class="syndrome-illustration">{{ syndromeOutputData.illustration }}</div>
+          </div>
+        </div>
+
+        <div class="syndrome-card-section">
+          <div class="syndrome-section-title">五、调理方案</div>
+          <div class="syndrome-section-content">
+            <div class="syndrome-plan-list">
+              <div v-for="(p, i) in syndromeOutputData.conditioningPlan" :key="i" class="syndrome-plan-item">
+                <span class="syndrome-plan-num">{{ i + 1 }}</span>
+                <span>{{ p }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="syndrome-card-section">
+          <div class="syndrome-section-title">六、产品配套</div>
+          <div class="syndrome-section-content">
+            <div class="syndrome-product-list">
+              <div v-for="(prod, i) in syndromeOutputData.productRecommendation" :key="i" class="syndrome-product-item">
+                <span class="syndrome-product-badge">推荐</span>
+                <span>{{ prod }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="syndrome-card-footer">
+          <div class="syndrome-footer-tip">以上为模拟辨证分析结果，仅供参考。后续将接入真实证型计算引擎。</div>
+        </div>
+      </div>
+
+      <!-- 医生思考中 / 打字中 -->
+      <div v-if="isTyping" class="chat-msg doctor">
+        <img class="chat-avatar" src="@/assets/doctor.png" alt="老中医师" />
+        <div v-if="llmIsLoading" class="chat-bubble-doctor thinking-bubble">
+          <span class="thinking-icon">🤔</span>
+          <span class="thinking-text">正在分析您的描述…</span>
+        </div>
+        <div v-else class="chat-bubble-doctor">
+          <span class="typing-cursor"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 选项按钮组：全局隐藏，用户通过语音/文字自由表达，系统自动识别意图 -->
+    <div class="options-area" v-if="false">
+      <button
+        v-for="opt in currentStep.options"
+        :key="opt.label"
+        class="option-btn"
+        @click="onOptionClick(opt.label, opt.nextStep, opt.payload)"
+      >
+        {{ opt.label }}
+      </button>
+    </div>
+
+    <!-- 底部输入区：语音输入按钮（所有非终步骤均可使用） -->
+    <div class="input-area voice-only" v-if="!isTyping && !ttsIsSpeaking && !llmIsLoading && !currentStep.isEnd">
+      <button
+        v-if="canReselect"
+        class="reselect-btn"
+        @click="reselectCurrentAnswer"
+        title="重新选择"
+      >
+        ↩ 重新选择
+      </button>
+      <button
+        class="mic-btn"
+        :class="speechStatus"
+        @click="onMicClick"
+        :title="speechStatus === 'listening' ? '点击停止录音' : '点击开始语音输入'"
+      >
+        {{ speechStatus === 'listening' ? '🔴' : speechStatus === 'processing' ? '⏳' : '🎙️' }}
+      </button>
+    </div>
+
+    <!-- 舌脉采集浮层 -->
+    <div class="capture-overlay" v-if="isCapturing">
+      <div class="capture-card">
+        <!-- 采集完成：显示成功提示 -->
+        <template v-if="captureCompleted">
+          <div class="capture-success-icon">✓</div>
+          <div class="capture-success-text">采集成功</div>
+        </template>
+        <!-- 采集中：显示进度 -->
+        <template v-else>
+          <div class="capture-icon">
+            <span v-if="captureType === 'tongue_top'">📷</span>
+            <span v-else-if="captureType === 'tongue_bottom'">📷</span>
+            <span v-else-if="captureType === 'pulse'">🫀</span>
+          </div>
+          <div class="capture-title">
+            {{ captureType === 'pulse' ? '正在测量脉搏…' : '正在拍摄舌象…' }}
+          </div>
+          <div class="capture-progress-bar">
+            <div class="capture-progress-fill" :style="{ width: captureProgress + '%' }"></div>
+          </div>
+          <div class="capture-tip">
+            {{ captureType === 'tongue_top' ? '请自然伸出舌头，面对镜头' : captureType === 'tongue_bottom' ? '请将舌头卷起，露出舌下脉络' : '请将手腕内侧贴近设备感应区' }}
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- 语音录音提示浮层 -->
+    <div class="voice-toast" v-if="showVoiceToast">
+      <div class="voice-toast-wave">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+      <span>正在聆听，请说话…</span>
+    </div>
+
+    <!-- 错误提示 -->
+    <div class="error-toast" v-if="showErrorToast">⚠️ {{ errorToastText }}</div>
+
+  </div>
+</template>

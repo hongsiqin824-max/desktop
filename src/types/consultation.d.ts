@@ -1,0 +1,232 @@
+// 问诊业务域类型定义
+// 所有问诊相关接口和类型统一在此定义
+
+// ── 流程状态机类型 ──────────────────────────────────────────────
+export type StepIdType =
+  | 'initial'
+  | 'branch_a_free'
+  | 'branch_b_symptom'
+  | 'branch_b_clarify'
+  | 'branch_c_condition'
+  | 'branch_c_clarify'
+  | 'severity'
+  | 'end_a_major'
+  | 'end_a_product'
+  | 'end_a_other'
+  | 'end_a_other_final'
+  | 'end_severe'
+  | 'end_moderate'
+  | 'end_hospital'
+  | 'end_clarify_hospital'
+  | 'tongue_top_intro'
+  | 'tongue_bottom_intro'
+  | 'pulse_intro'
+  | 'pulse_done'
+  | 'analysis_review'
+  | 'analysis_normal'
+  | 'analysis_abnormal'
+  | 'analysis_continue'
+  | 'analysis_fail'
+  | 'analysis_hospital'
+  | 'detail_transition'
+  | 'detail_question'
+  | 'detail_summary'
+  | 'detail_done'
+  | 'self_feature_intro'
+  | 'self_feature_question'
+  | 'self_feature_summary'
+  | 'self_feature_done'
+  | 'syndrome_output'
+  | 'end_unsupported_symptom'
+
+export interface IChatOption {
+  label: string
+  nextStep: StepIdType
+  payload?: string
+  semanticDesc?: string
+}
+
+export interface IFlowStep {
+  id: StepIdType
+  doctorText: string
+  options?: IChatOption[]
+  isFreeInput?: boolean
+  isEnd?: boolean
+  autoAdvance?: {
+    nextStep: StepIdType
+    payload?: string
+    delay: number
+  }
+  captureType?: 'tongue_top' | 'tongue_bottom' | 'pulse'
+}
+
+// ── 详细问诊类型 ──────────────────────────────────────────────
+export interface IDetailQuestionOption {
+  label: string
+  taCode: string
+  semanticDesc?: string
+  severityQuestion?: IDetailSeverityQuestion
+  followUpQuestions?: string[]
+  excludeAfter?: string[]
+}
+
+export interface IDetailSeverityQuestion {
+  subjectText: string
+  lighterCode: string
+  heavierCode: string
+}
+
+export interface IDetailSeverityPending {
+  subjectText: string
+  lighterCode: string
+  heavierCode: string
+  parentLabel: string
+  parentCategory: string
+  isFirstQuestion: boolean
+}
+
+export interface IDetailQuestion {
+  category: string
+  doctorText: string
+  options: IDetailQuestionOption[]
+  isFreeInput?: boolean
+}
+
+export interface IDetailAnswer {
+  taCode: string
+  label: string
+  category: string
+}
+
+// ── 回应规范类型 ──────────────────────────────────────────────
+export type ResponseScenarioType =
+  | 'O_VALID'
+  | 'O_EMPTY_1'
+  | 'O_EMPTY_2'
+  | 'O_EMPTY_3'
+  | 'O_SEMANTIC'
+  | 'O_INVALID'
+  | 'O_AMBIGUOUS'
+  | 'O_REFUSAL'
+  | 'UNCERTAIN'
+  | 'D_VALID'
+  | 'D_SHORT'
+  | 'D_EMPTY_1'
+  | 'D_EMPTY_2'
+  | 'D_EMPTY_3'
+  | 'D_VAGUE'
+  | 'D_OFFTOPIC'
+  | 'D_REFUSAL'
+  | 'SEVERITY_GUARANTEE'
+  | 'SEVERITY_UNMATCHED'
+  | 'INITIAL_GUIDE'
+  | 'ANALYSIS_CONFIRM_NORMAL'
+  | 'ANALYSIS_CONFIRM_ABNORMAL'
+  | 'ANALYSIS_FAIL_RETRY'
+  | 'DETAIL_TRANSITION'
+  | 'DETAIL_QUESTION_INTRO'
+  | 'DETAIL_SUMMARY'
+  | 'DETAIL_EXPLAIN'
+
+// ── 对话记录类型 ──────────────────────────────────────────────
+export type PersonaType = 'nurse' | 'doctor'
+
+export interface IChatMessage {
+  role: 'doctor' | 'nurse' | 'user'
+  text: string
+  type?: 'text' | 'analysis' | 'capture_success' | 'summary' | 'syndrome'
+}
+
+// ── 自选特征类型 ──────────────────────────────────────────────
+export interface ISelfFeatureSymptom {
+  label: string
+  brief: string
+  detail: string
+  semanticDesc?: string
+  category: 'K' | 'X' | 'P'
+  baseCode: string
+  fixedTaCode?: string
+}
+
+export interface ISelfFeatureCategoryOption {
+  label: string
+  expandKey: string
+  semanticDesc?: string
+  genderCondition?: 'male' | 'female'
+  ageRange?: [number, number]
+}
+
+export interface ISelfFeatureLocation {
+  label: string
+  zone: 'upper' | 'middle' | 'lower'
+  primaryMeridians: string[]
+  semanticDesc?: string
+  genderCondition?: 'male' | 'female'
+  ageRange?: [number, number]
+}
+
+export interface ISelfFeatureRecord {
+  location: string
+  locationZone: 'upper' | 'middle' | 'lower'
+  symptom: string
+  symptomCategory: 'K' | 'X' | 'P'
+  symptomBaseCode: string
+  severity: 1 | 2
+  fixedTaCode?: string
+}
+
+// ── 自选特征子步骤类型 ──────────────────────────────────────────
+export type SelfFeatureSubStepType = 'location' | 'nature' | 'nature_expand' | 'severity' | 'continue'
+
+// ── 舌脉分析数据接口 ──────────────────────────────────────────
+export interface IAnalysisData {
+  tongueCoating: string
+  tongueColor: string
+  tongueSize: string
+  tongueBottom: string
+  pulseType: string
+  pulseRate: number
+  isAbnormal: boolean
+}
+
+// ── 语音识别类型 ──────────────────────────────────────────────
+export type SpeechStatusType = 'idle' | 'listening' | 'processing' | 'error'
+
+// ── 证型输出类型 ──────────────────────────────────────────────
+export interface ISyndromeOutput {
+  diseaseCategory: string
+  mainSymptom: string
+  mainSymptoms: string[]
+  syndromeResult: string
+  syndromeDetail: string
+  illustration: string
+  conditioningPlan: string[]
+  productRecommendation: string[]
+}
+
+// ── 重新选择快照类型 ────────────────────────────────────────────
+export interface IStepSnapshot {
+  stepId: StepIdType
+  symptom: string
+  messagesLength: number
+  detailQuestionCategory: string
+  detailBranch: string
+  detailQuestionQueue: string[]
+  detailAskedCategories: string[]
+  detailAnswers: IDetailAnswer[]
+  detailIsFirstQuestion: boolean
+  detailSeverityPending: IDetailSeverityPending | null
+  detailFailCount: number
+  invalidRetryCount: number
+  selfFeatureSubStep: SelfFeatureSubStepType
+  selfFeatureRecords: ISelfFeatureRecord[]
+  selfFeatureCurrentLocation: string
+  selfFeatureCurrentLocationZone: 'upper' | 'middle' | 'lower'
+  selfFeatureCurrentSymptom: string
+  selfFeatureCurrentSymptomCategory: 'K' | 'X' | 'P'
+  selfFeatureCurrentSymptomBaseCode: string
+  selfFeatureCurrentSymptomFixedTaCode: string | undefined
+  selfFeatureExpandKey: string
+  analysisData: IAnalysisData | null
+  syndromeOutputData: ISyndromeOutput | null
+}

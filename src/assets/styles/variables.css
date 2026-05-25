@@ -1,0 +1,214 @@
+/* 全局颜色变量定义 */
+:root {
+  /* ── 基础色值层 (50-900 标准刻度) ──────────────────────────── */
+
+  /* 米色系 */
+  --color-beige-50: #FAF8F5;
+  --color-beige-100: #F5F0E8;
+  --color-beige-200: #F0E8DE;
+  --color-beige-300: #EADAC8;
+  --color-beige-400: #E0D0BE;
+  --color-beige-500: #C8A882;
+
+  /* 棕色系 */
+  --color-brown-300: #BFA88A;
+  --color-brown-400: #A0785A;
+  --color-brown-500: #8C6A4A;
+  --color-brown-600: #755538;
+  --color-brown-700: #5C432C;
+  --color-brown-800: #3A2A1A;
+  --color-brown-900: #382718;
+
+  /* 红色系 */
+  --color-red-500: #E65A5A;
+  --color-red-600: #E74C3C;
+  --color-red-700: #C0392B;
+
+  /* 绿色系 */
+  --color-green-400: #66BB6A;
+  --color-green-500: #4CAF50;
+  --color-green-600: #388E3C;
+
+  /* 橙色系 */
+  --color-orange-500: #F39C12;
+  --color-orange-600: #E67E22;
+
+  /* 灰色系 */
+  --color-gray-100: #F5F5F5;
+  --color-gray-200: #E8E8E8;
+  --color-gray-300: #DCDCDC;
+  --color-gray-500: #999999;
+  --color-gray-800: #333333;
+
+  /* 黑白 */
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+
+  /* ── 主题语义层 ──────────────────────────────────────────── */
+  --theme-primary: var(--color-brown-500);
+  --theme-primary-light: var(--color-beige-500);
+  --theme-bg: var(--color-beige-50);
+  --theme-bg-warm: var(--color-beige-100);
+  --theme-text-main: var(--color-brown-800);
+  --theme-text-sub: var(--color-brown-700);
+  --theme-text-muted: var(--color-brown-300);
+  --theme-danger: var(--color-red-500);
+  --theme-success: var(--color-green-500);
+  --theme-warning: var(--color-orange-500);
+  --theme-border: var(--color-beige-300);
+  --theme-border-light: var(--color-beige-400);
+  --theme-surface: var(--color-white);
+  --theme-surface-warm: var(--color-beige-200);
+
+  /* ── 组件状态层 ──────────────────────────────────────────── */
+
+  /* 按钮 */
+  --btn-primary-bg: var(--theme-primary);
+  --btn-primary-bg-light: var(--theme-primary-light);
+  --btn-primary-text: var(--color-white);
+  --btn-secondary-bg: var(--color-beige-100);
+  --btn-secondary-text: var(--theme-primary);
+  --btn-option-border: var(--theme-primary-light);
+  --btn-option-text: var(--theme-primary);
+
+  /* 输入框 */
+  --input-bg: var(--color-white);
+  --input-bg-warm: var(--theme-bg);
+  --input-border: var(--color-beige-400);
+  --input-border-focus: var(--theme-primary);
+  --input-text: var(--theme-text-main);
+  --input-placeholder: var(--theme-text-muted);
+  --input-area-shadow: var(--shadow-light);
+  --input-area-border: var(--theme-border-light);
+
+  /* 对话气泡 */
+  --chat-doctor-bg: var(--theme-surface);
+  --chat-doctor-text: var(--theme-text-main);
+  --chat-doctor-shadow: var(--shadow-light);
+  --chat-user-bg: var(--theme-primary);
+  --chat-user-bg-light: var(--color-brown-400);
+  --chat-user-text: var(--color-white);
+  --chat-user-shadow: var(--shadow-medium);
+
+  /* 医生形象区 */
+  --doctor-section-bg-from: var(--color-beige-500);
+  --doctor-section-bg-to: var(--theme-bg-warm);
+  --doctor-badge-bg: var(--badge-bg);
+  --doctor-badge-shadow: var(--shadow-light);
+  --doctor-badge-text: var(--color-brown-700);
+
+  /* 选项按钮 */
+  --option-bg: var(--theme-surface);
+  --option-border: var(--btn-option-border);
+  --option-text: var(--btn-option-text);
+  --option-shadow: var(--shadow-light);
+  --option-active-bg: var(--theme-primary);
+  --option-active-text: var(--color-white);
+  --option-active-border: var(--theme-primary);
+
+  /* 麦克风按钮 */
+  --mic-bg: var(--theme-bg);
+  --mic-border: var(--color-beige-400);
+  --mic-listening-bg: var(--color-red-600);
+  --mic-listening-border: var(--color-red-600);
+  --mic-processing-bg: var(--color-orange-500);
+  --mic-processing-border: var(--color-orange-500);
+
+  /* 采集浮层 */
+  --capture-overlay-bg: var(--overlay-warm);
+  --capture-card-bg: var(--theme-surface);
+  --capture-card-shadow: var(--shadow-medium);
+  --capture-title-text: var(--theme-primary);
+  --capture-tip-text: var(--color-brown-800);
+  --capture-progress-bg: var(--color-beige-300);
+  --capture-success-bg: var(--theme-success);
+  --capture-success-bg-light: var(--color-green-400);
+  --capture-success-text: var(--theme-success);
+
+  /* 分析气泡 */
+  --analysis-bg: var(--theme-bg);
+  --analysis-border: var(--color-beige-300);
+  --analysis-shadow: var(--shadow-light);
+
+  /* 汇总气泡 */
+  --summary-bg: var(--theme-surface);
+  --summary-border: var(--theme-primary-light);
+  --summary-shadow: var(--shadow-light);
+
+  /* 证型输出卡片 */
+  --syndrome-card-bg: var(--theme-surface);
+  --syndrome-card-border: var(--color-beige-300);
+  --syndrome-card-shadow: var(--shadow-medium);
+  --syndrome-title-text: var(--color-brown-600);
+  --syndrome-section-title-text: var(--color-brown-700);
+  --syndrome-section-title-bar: var(--theme-primary);
+  --syndrome-content-text: var(--color-brown-800);
+  --syndrome-highlight-bg: var(--color-beige-100);
+  --syndrome-highlight-border: var(--color-beige-400);
+  --syndrome-highlight-title-text: var(--color-brown-600);
+  --syndrome-highlight-title-bar: var(--color-red-500);
+  --syndrome-disease-tag-bg: var(--color-beige-300);
+  --syndrome-disease-tag-text: var(--color-brown-700);
+  --syndrome-symptom-tag-bg: var(--color-beige-500);
+  --syndrome-symptom-tag-text: var(--color-brown-900);
+  --syndrome-num-bg: var(--color-beige-500);
+  --syndrome-num-text: var(--color-brown-700);
+  --syndrome-result-name-text: var(--color-red-500);
+  --syndrome-result-detail-text: var(--color-brown-800);
+  --syndrome-illustration-bg: var(--color-beige-100);
+  --syndrome-illustration-border: var(--color-beige-300);
+  --syndrome-illustration-text: var(--color-brown-800);
+  --syndrome-plan-num-bg: var(--color-green-400);
+  --syndrome-plan-num-text: var(--color-white);
+  --syndrome-product-item-bg: var(--color-beige-100);
+  --syndrome-product-item-border: var(--color-beige-400);
+  --syndrome-product-badge-bg: var(--color-green-500);
+  --syndrome-product-badge-text: var(--color-white);
+  --syndrome-footer-tip-text: var(--color-brown-300);
+
+  /* 语音提示浮层 */
+  --voice-toast-bg: var(--overlay-dark);
+  --voice-toast-text: var(--color-white);
+
+  /* 错误提示 */
+  --error-toast-bg: var(--color-red-600);
+  --error-toast-text: var(--color-white);
+
+  /* 在线指示灯 */
+  --online-dot-color: var(--theme-success);
+
+  /* 打字光标 */
+  --typing-cursor-bg: var(--theme-primary);
+
+  /* ── 透明度/阴影预设（阴影层） ──────────────────────────── */
+  --shadow-xs: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-light: 0 4px 20px rgba(140, 106, 74, 0.1);
+  --shadow-medium: 0 4px 20px rgba(140, 106, 74, 0.25);
+  --shadow-strong: 0 6px 20px rgba(140, 106, 74, 0.3);
+  --shadow-heavy: 0 15px 30px rgba(140, 106, 74, 0.3);
+  --shadow-card: 0 20px 60px rgba(140, 106, 74, 0.15);
+  --shadow-overlay: 0 -6px 30px rgba(140, 106, 74, 0.08);
+
+  /* ── 透明度覆盖层预设 ──────────────────────────────────── */
+  --overlay-white: rgba(255, 255, 255, 0.9);
+  --overlay-white-strong: rgba(255, 255, 255, 0.95);
+  --overlay-warm: rgba(250, 248, 245, 0.92);
+  --overlay-dark: rgba(50, 30, 10, 0.85);
+  --overlay-black: rgba(0, 0, 0, 0.4);
+  --overlay-black-light: rgba(0, 0, 0, 0.15);
+  --overlay-black-xs: rgba(0, 0, 0, 0.05);
+
+  /* ── 特殊用途 ──────────────────────────────────────────── */
+  --badge-bg: var(--overlay-white);
+  --badge-shadow: var(--shadow-light);
+  --form-bubble-shadow: var(--shadow-light);
+  --btn-shadow: var(--shadow-heavy);
+  --btn-shadow-pressed: 0 5px 15px rgba(140, 106, 74, 0.2);
+  --doctor-shadow: var(--shadow-xs);
+  --logo-shadow: 0 10px 30px rgba(140, 106, 74, 0.1);
+  --keyboard-shadow: 0 -10px 30px rgba(140, 106, 74, 0.1);
+  --container-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  --toast-box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --mic-pulse-shadow-start: 0 0 0 0 rgba(231, 76, 60, 0.4);
+  --mic-pulse-shadow-end: 0 0 0 20px rgba(231, 76, 60, 0);
+}
