@@ -21,6 +21,8 @@ class PCMResampleProcessor extends AudioWorkletProcessor {
         this._firOverlap = new Float32Array(this._filterTaps - 1)
         this._agcPeak = 0
         this._active = true
+        // 回复主线程：worklet 已初始化完毕，可以开始接收音频
+        this.port.postMessage({ type: 'ready' })
       } else if (e.data.type === 'stop') {
         this._active = false
         // 主动通知主线程：worklet 已停止，可以安全断开

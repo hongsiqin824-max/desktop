@@ -37,8 +37,9 @@ export function useSpeechRecognition() {
   let responseDone = false
   let transcriptionDone = false
   let retryCount = 0
+  let workletReady = false
 
-  const MAX_RETRIES = 3
+  const RETRY_DELAYS = [3000, 6000, 12000]
   const TARGET_SAMPLE_RATE = 16000
   const SEND_INTERVAL_MS = 100
   const FILTER_TAPS = 65
@@ -180,6 +181,7 @@ export function useSpeechRecognition() {
     sessionReady = false
     responseDone = false
     transcriptionDone = false
+    workletReady = false
   }
 
   const finish = (text: string) => {
@@ -229,6 +231,29 @@ export function useSpeechRecognition() {
     }
   }
 
+  // ── 启动音频发送（sendTimer + 无音频超时检测）──
+  // 需要同时满足：sessionReady + workletReady（如果用 worklet）
+  const startAudioSending = () => {
+    if (sendTimer) return // 已启动，不重复
+    // 使用 worklet 时，必须等 worklet 就绪
+    if (workletNode && !workletReady) return
+
+    sendTimer = window.setInterval(() => {
+      if (pcmChunks.length > 0 && ws?.readyState === WebSocket.OPEN && sessionReady) {
+        hasAudioActivity = true
+        const merged = mergePcm(pcmChunks)
+        pcmChunks = []
+        sendAudioChunk(merged)
+      }
+    }, SEND_INTERVAL_MS)
+
+    audioActivityTimer = window.setTimeout(() => {
+      if (!hasAudioActivity && status.value === 'listening' && !stopping) {
+        finishWithError('未检测到音频输入，请检查麦克风后重试')
+      }
+    }, 3000)
+  }
+
   // ── 建立 WebSocket 连接（可重试）──
   const connectWs = (): void => {
     const url = buildWsUrl()
@@ -258,25 +283,8 @@ export function useSpeechRecognition() {
           case 'session.created':
             sessionReady = true
             status.value = 'listening'
-
-            if (workletNode) {
-              workletNode.port.postMessage({ type: 'start' })
-            }
-
-            sendTimer = window.setInterval(() => {
-              if (pcmChunks.length > 0 && ws?.readyState === WebSocket.OPEN && sessionReady) {
-                hasAudioActivity = true
-                const merged = mergePcm(pcmChunks)
-                pcmChunks = []
-                sendAudioChunk(merged)
-              }
-            }, SEND_INTERVAL_MS)
-
-            audioActivityTimer = window.setTimeout(() => {
-              if (!hasAudioActivity && status.value === 'listening' && !stopping) {
-                finishWithError('麦克风未正常工作，请重新点击录音')
-              }
-            }, 2000)
+            // 尝试启动音频发送（如果用 worklet 则需要等 worklet 就绪）
+            startAudioSending()
             break
 
           case 'conversation.item.input_audio_transcription.delta':
@@ -318,19 +326,42 @@ export function useSpeechRecognition() {
     }
 
     ws.onclose = (ev: CloseEvent) => {
-      // 服务端限流（1011）：无论当前状态都自动重试
-      if (ev.code === 1011 && ev.reason?.includes('Too many requests') && retryCount < MAX_RETRIES) {
+      // 服务端限流（1011）：保留音频管线，等旧连接确认关闭后延迟重连
+      if (ev.code === 1011 && ev.reason?.includes('Too many requests') && retryCount < RETRY_DELAYS.length) {
+        const delay = RETRY_DELAYS[retryCount]!
         retryCount++
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000)
-        console.warn(`[ASR] 服务端限流，${delay / 1000}s 后重试 (${retryCount}/${MAX_RETRIES})`)
+        console.warn(`[ASR] 服务端限流，等旧连接关闭后 ${delay / 1000}s 重试 (${retryCount}/${RETRY_DELAYS.length})`)
+
+        // 保存旧 WS 引用（releaseWsOnly 会置空 ws）
+        const oldWs = ws
         releaseWsOnly()
-        retryTimer = window.setTimeout(() => {
-          retryTimer = null
-          // 只在用户还未停止录音时重试
-          if (!stopping && resolveStop) {
-            connectWs()
-          }
-        }, delay)
+
+        // 等旧连接确认关闭后再开始倒计时重连
+        let closeConfirmed = false
+        const startRetry = () => {
+          if (closeConfirmed) return
+          closeConfirmed = true
+          retryTimer = window.setTimeout(() => {
+            retryTimer = null
+            if (!stopping && resolveStop) {
+              connectWs()
+            }
+          }, delay)
+        }
+
+        // 在旧 WS 上设置新的 onclose 监听（若仍在 CLOSING 状态则等待关闭事件）
+        if (oldWs && (oldWs.readyState === WebSocket.CLOSING || oldWs.readyState === WebSocket.OPEN)) {
+          oldWs.onopen = null
+          oldWs.onmessage = null
+          oldWs.onerror = null
+          oldWs.onclose = () => startRetry()
+          try { oldWs.close() } catch {}
+          // 超时兜底：若旧连接一直不触发 onclose，500ms 后强制开始倒计时
+          setTimeout(startRetry, 500)
+        } else {
+          // 旧连接已不在活跃状态，直接开始倒计时
+          startRetry()
+        }
         return
       }
 
@@ -397,9 +428,16 @@ export function useSpeechRecognition() {
           const workletUrl = new URL('./worklets/pcmResampleProcessor.js', import.meta.url)
           await audioContext.audioWorklet.addModule(workletUrl)
           workletNode = new AudioWorkletNode(audioContext, 'pcm-resample-processor')
+          workletReady = false
           workletNode.port.onmessage = (e: MessageEvent) => {
             if (e.data.type === 'pcm') {
               pcmChunks.push(e.data.data)
+            } else if (e.data.type === 'ready') {
+              workletReady = true
+              // worklet 就绪后，如果 session 也已就绪，启动音频发送
+              if (sessionReady && !sendTimer) {
+                startAudioSending()
+              }
             }
           }
           workletNode.onprocessorerror = () => {
@@ -408,6 +446,8 @@ export function useSpeechRecognition() {
           sourceNode.connect(workletNode)
           workletNode.connect(audioContext.destination)
           useWorklet = true
+          // 立即发送 start，不等 session.created
+          workletNode.port.postMessage({ type: 'start' })
         } catch { /* AudioWorklet 不可用，回退到 ScriptProcessorNode */ }
       }
 
