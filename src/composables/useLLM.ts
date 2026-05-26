@@ -46,12 +46,13 @@ export function useLLM() {
     stepId: string,
     options: { label: string; semanticDesc?: string }[],
     doctorText?: string,
+    contextHint?: string,
   ): Promise<IOptionMatchResult | null> => {
     isLoading.value = true
     error.value = ''
 
     try {
-      const messages = buildOptionMatchMessages(userText, stepId, options, doctorText)
+      const messages = buildOptionMatchMessages(userText, stepId, options, doctorText, contextHint)
 
       const resultPromise = callLLM(messages)
 

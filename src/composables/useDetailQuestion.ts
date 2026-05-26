@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { StepIdType, IChatOption, IDetailAnswer, IDetailSeverityPending, IChatMessage } from '@/types/consultation'
-import { DETAIL_QUESTION_MAP, DETAIL_SEQUENCE_MAP, DETAIL_FIRST_QUESTION, DETAIL_EXPLANATION_MAP, COLD_QUESTIONS, COLD_QUESTION_SEQUENCE, GENDER_QUESTIONS, GENDER_QUESTION_SEQUENCE, GENDER_CONDITIONS, SHARED_CHILL_HEAT_QUESTIONS, SHARED_THIRST_QUESTIONS, SHARED_TASTE_QUESTIONS, SHARED_STOOL_QUESTIONS, SHARED_BLOOD_STASIS_QUESTIONS, SHARED_SWEAT_QUESTIONS, SHARED_FATIGUE_QUESTIONS, SHARED_FOLLOWUP_MAP } from '@/data/consultationDetail'
+import { DETAIL_QUESTION_MAP, DETAIL_SEQUENCE_MAP, DETAIL_FIRST_QUESTION, DETAIL_EXPLANATION_MAP, COLD_QUESTIONS, COLD_QUESTION_SEQUENCE, GENDER_QUESTIONS, GENDER_QUESTION_SEQUENCE, GENDER_CONDITIONS, SHARED_CHILL_HEAT_QUESTIONS, SHARED_THIRST_QUESTIONS, SHARED_TASTE_QUESTIONS, SHARED_STOOL_QUESTIONS, SHARED_BLOOD_STASIS_QUESTIONS, SHARED_SWEAT_QUESTIONS, SHARED_FATIGUE_QUESTIONS, SHARED_GENDER_FOLLOWUP_QUESTIONS, SHARED_FOLLOWUP_MAP } from '@/data/consultationDetail'
 import { generateResponse } from '@/data/consultationResponse'
 import { useUserStore } from '@/stores/global/user'
 
@@ -27,10 +27,10 @@ export function useDetailQuestion(ctx: IDetailContext) {
   const detailFailCount = ref(0)
   const genderQuestionsInjected = ref(false)
 
-  // 查找问题定义：先查症状专属题库，再查共享题库（寒热/口渴/口味/大便/血瘀），最后查性别共享题库
+  // 查找问题定义：先查症状专属题库，再查共享题库（寒热/口渴/口味/大便/血瘀/出汗/乏力/性别追问），最后查性别问题库
   const findQuestion = (category: string) => {
     const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-    return questionSet[category] || SHARED_CHILL_HEAT_QUESTIONS[category] || SHARED_THIRST_QUESTIONS[category] || SHARED_TASTE_QUESTIONS[category] || SHARED_STOOL_QUESTIONS[category] || SHARED_BLOOD_STASIS_QUESTIONS[category] || SHARED_SWEAT_QUESTIONS[category] || SHARED_FATIGUE_QUESTIONS[category] || GENDER_QUESTIONS[category]
+    return questionSet[category] || SHARED_CHILL_HEAT_QUESTIONS[category] || SHARED_THIRST_QUESTIONS[category] || SHARED_TASTE_QUESTIONS[category] || SHARED_STOOL_QUESTIONS[category] || SHARED_BLOOD_STASIS_QUESTIONS[category] || SHARED_SWEAT_QUESTIONS[category] || SHARED_FATIGUE_QUESTIONS[category] || SHARED_GENDER_FOLLOWUP_QUESTIONS[category] || GENDER_QUESTIONS[category]
   }
 
   // 解析共享追问的通用 key 为当前症状的实际 key
@@ -314,6 +314,43 @@ export function useDetailQuestion(ctx: IDetailContext) {
     return true
   }
 
+  // 批量选择多个选项（用户一次说出多个部位时使用）
+  const handleDetailBatchSelect = async (labels: string[]): Promise<boolean> => {
+    detailFailCount.value = 0
+    const question = findQuestion(detailQuestionCategory.value)
+    if (!question) return false
+
+    const allFollowUps: string[] = []
+
+    for (const label of labels) {
+      const matchedOpt = question.options.find(opt => opt.label === label)
+      if (!matchedOpt) continue
+
+      // 记录答案
+      if (matchedOpt.taCode) {
+        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category })
+      }
+
+      // 收集追问（稍后统一插入队列）
+      if (matchedOpt.followUpQuestions && matchedOpt.followUpQuestions.length > 0) {
+        allFollowUps.push(...resolveFollowUps(matchedOpt.followUpQuestions))
+      }
+    }
+
+    // 去重后插入追问队列
+    if (allFollowUps.length > 0) {
+      const uniqueFollowUps = [...new Set(allFollowUps)]
+      detailQuestionQueue.value = [...uniqueFollowUps, ...detailQuestionQueue.value]
+    }
+
+    // 标记当前问题已问
+    detailAskedCategories.value.add(detailQuestionCategory.value)
+
+    // 推进到下一题
+    await advanceDetailQueue()
+    return true
+  }
+
   // 初始化详细问诊首题
   const initFirstQuestion = (symptom: string) => {
     const firstCategory = DETAIL_FIRST_QUESTION[symptom] || 'chillHeat'
@@ -345,6 +382,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
     detailFailCount,
     handleDetailOptionClick,
     handleDetailSubmitText,
+    handleDetailBatchSelect,
     advanceDetailQueue,
     initFirstQuestion,
     getFirstQuestionText,

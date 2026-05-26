@@ -150,20 +150,38 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
   }
 
   // ── 查找最近经脉（用于模式C的空白区域点击） ────────────────
+  // 同时搜索右侧原始点和左侧镜像点（X取反），中线经脉(JM13/JM14)不镜像
+  const MIDLINE_CODES = new Set<string>(['JM13', 'JM14'])
+
   const findNearestMeridian = (point: Point3D): MeridianCodeType | null => {
     let minDist = Infinity
     let nearest: MeridianCodeType | null = null
     const px = point[0], py = point[1], pz = point[2]
 
     for (const meridian of MERIDIAN_DATA) {
+      const isMidline = MIDLINE_CODES.has(meridian.code)
+
       for (const mp of meridian.pathPoints) {
-        const dx = px - mp[0]
-        const dy = py - mp[1]
-        const dz = pz - mp[2]
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-        if (dist < minDist) {
-          minDist = dist
+        // 右侧（原始点）
+        const dxR = px - mp[0]
+        const dyR = py - mp[1]
+        const dzR = pz - mp[2]
+        const distR = Math.sqrt(dxR * dxR + dyR * dyR + dzR * dzR)
+        if (distR < minDist) {
+          minDist = distR
           nearest = meridian.code
+        }
+
+        // 左侧（X取反的镜像点）
+        if (!isMidline) {
+          const dxL = px - (-mp[0])
+          const dyL = py - mp[1]
+          const dzL = pz - mp[2]
+          const distL = Math.sqrt(dxL * dxL + dyL * dyL + dzL * dzL)
+          if (distL < minDist) {
+            minDist = distL
+            nearest = meridian.code
+          }
         }
       }
     }

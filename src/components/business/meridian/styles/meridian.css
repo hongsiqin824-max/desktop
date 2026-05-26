@@ -10,6 +10,14 @@
   overflow: hidden;
 }
 
+.meridian-canvas-wrapper {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 .meridian-canvas {
   width: 100% !important;
   height: 100% !important;

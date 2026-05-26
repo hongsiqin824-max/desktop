@@ -34,6 +34,8 @@ export interface IMeridianDef {
   zone: 'upper' | 'middle' | 'lower'
   /** 3D路径坐标点数组，用于 CatmullRomCurve3 绘制经脉曲线 */
   pathPoints: Point3D[]
+  /** 左右侧标识：双侧经脉(JM1-JM12)有 left/right，中线经脉(JM13/JM14)无此字段 */
+  side?: 'left' | 'right'
   /** 经络信息面板的详细文案（后续补充） */
   detailInfo?: string
 }

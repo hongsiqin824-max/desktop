@@ -9,7 +9,6 @@ import type { IIntentResult } from '@/types/llm'
 import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
 import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
-import { DETAIL_QUESTION_MAP, COLD_QUESTIONS } from '@/data/consultationDetail'
 import { generateMockSyndromeOutput } from '@/data/syndromeOutput'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
@@ -137,8 +136,7 @@ const currentStep = computed(() => {
       }
     }
 
-    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-    const question = questionSet[detail.detailQuestionCategory.value]
+    const question = detail.findQuestion(detail.detailQuestionCategory.value)
     if (!question) return FLOW_STEPS['detail_question']
     const answeredTaCodes = new Set(detail.detailAnswers.value.map(a => a.taCode))
     const filteredOptions = question.options.filter((opt: any) => {
@@ -438,8 +436,7 @@ const buildFallbackQuestion = (): string => {
       return `您说的我没太理解，请问${detail.detailSeverityPending.value.subjectText}的程度是较轻还是较重？您可以直接说"较轻"或"较重"。`
     }
 
-    const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-    const question = questionSet[detail.detailQuestionCategory.value]
+    const question = detail.findQuestion(detail.detailQuestionCategory.value)
     if (question) {
       const labels = question.options.map((opt: any) => opt.label).join('、')
       return `您说的我没太理解，${question.doctorText.replace(/如果不太理解.*$/, '')}您可以直接说：${labels}。`
@@ -562,12 +559,19 @@ const onSubmitText = async (text: string) => {
   } else if (hasOptions) {
     isTyping.value = true
     let currentDoctorText: string | undefined
+    let contextHint: string | undefined
     let llmOptions: { label: string; semanticDesc?: string }[]
 
     if (currentStepId.value === 'detail_question') {
       const question = detail.findQuestion(detail.detailQuestionCategory.value)
       currentDoctorText = question?.doctorText
       llmOptions = (question?.options || step.options!).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+
+      // 构建上下文提示：已记录的答案帮助 LLM 理解当前匹配方向
+      const recordedLabels = detail.detailAnswers.value.map(a => a.label).filter(Boolean)
+      if (recordedLabels.length > 0) {
+        contextHint = `用户已记录：${recordedLabels.join('、')}`
+      }
     } else {
       llmOptions = (step.options as any[]).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
     }
@@ -576,7 +580,7 @@ const onSubmitText = async (text: string) => {
       llmOptions = llmOptions.filter(opt => clarificationCandidates.value.includes(opt.label))
     }
 
-    const optionResult = await classifyOption(text, currentStepId.value, llmOptions, currentDoctorText); isTyping.value = false
+    const optionResult = await classifyOption(text, currentStepId.value, llmOptions, currentDoctorText, contextHint); isTyping.value = false
 
     if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
       clarificationCandidates.value = []
@@ -597,8 +601,28 @@ const onSubmitText = async (text: string) => {
       }
     }
 
+    // detail_question 多部位批量匹配：用户一次说出多个部位时，批量记录所有匹配选项
+    if (currentStepId.value === 'detail_question' && optionResult && optionResult.matchedLabels.length >= 2 && !optionResult.clarificationQuestion) {
+      const question = detail.findQuestion(detail.detailQuestionCategory.value)
+      const validLabels = optionResult.matchedLabels.filter(label => question?.options.some(opt => opt.label === label))
+      if (validLabels.length >= 2) {
+        clarificationCandidates.value = []
+        const lastIdx = messages.value.length - 1
+        if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+        // 显示用户原始输入
+        messages.value.push({ role: 'user', text })
+        await scrollToBottom()
+        await detail.handleDetailBatchSelect(validLabels)
+        return
+      }
+    }
+
     if (optionResult && optionResult.matchedLabels.length >= 2 && optionResult.clarificationQuestion) {
-      const candidates = optionResult.matchedLabels.filter(label => step.options!.some(opt => opt.label === label))
+      // detail_question 使用动态题库查找，其他步骤使用 step.options
+      const filterOptions = currentStepId.value === 'detail_question'
+        ? (detail.findQuestion(detail.detailQuestionCategory.value)?.options || [])
+        : (step.options || [])
+      const candidates = optionResult.matchedLabels.filter(label => filterOptions.some((opt: any) => opt.label === label))
       if (candidates.length >= 2) { clarificationCandidates.value = candidates; await doctorSay(optionResult.clarificationQuestion); return }
     }
   }

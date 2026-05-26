@@ -1,11 +1,11 @@
 <!-- 经脉3D交互组件：人体模型 + 14条经脉曲线 + 穴位标记点 + 交互高亮 -->
 <!-- 科技风半透明主题，支持点击经脉、悬停高亮、自由旋转 -->
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import * as THREE from 'three'
-import type { MeridianCodeType, Point3D } from '@/types/meridian'
+import type { MeridianCodeType, Point3D, IMeridianDef } from '@/types/meridian'
 import { MERIDIAN_DATA } from '@/data/meridianData'
 import { useMeridianBody } from '@/composables/useMeridianBody'
 import MeridianInfoPanel from './MeridianInfoPanel.vue'
@@ -31,6 +31,7 @@ const meridian = useMeridianBody({ recordedMeridians: recordedSet })
 // 相机引用
 const cameraRef = ref<THREE.PerspectiveCamera | null>(null)
 const controlsRef = ref<any>(null)
+const canvasContainerRef = ref<HTMLElement | null>(null)
 
 // 悬停提示
 const tooltipVisible = ref(false)
@@ -38,35 +39,61 @@ const tooltipText = ref('')
 const tooltipX = ref(0)
 const tooltipY = ref(0)
 
-// 经脉曲线的 THREE.CatmullRomCurve3 实例缓存
-const meridianCurves = computed(() => {
-  return MERIDIAN_DATA.map(m => ({
-    code: m.code,
-    curve: new THREE.CatmullRomCurve3(
-      m.pathPoints.map(p => new THREE.Vector3(p[0], p[1], p[2])),
-      false,
-      'catmullrom',
-      0.5,
-    ),
+// 更新 tooltip 位置（跟随鼠标，相对于 .meridian-body-view 容器）
+const updateTooltipPosition = (e: MouseEvent) => {
+  const container = canvasContainerRef.value?.parentElement
+  if (!container) return
+  const rect = container.getBoundingClientRect()
+  tooltipX.value = e.clientX - rect.left + 15
+  tooltipY.value = e.clientY - rect.top + 15
+}
+
+// ── 中线经脉（不需要左右镜像）─────────────────────────────────
+const MIDLINE_MERIDIANS = new Set<MeridianCodeType>(['JM13', 'JM14'])
+
+// 展开后的全部经脉数据：原始14条 + 12条左侧镜像 = 26条
+// MERIDIAN_DATA 是静态数据，不会变化，无需 computed 响应式
+const allMeridianData: IMeridianDef[] = (() => {
+  const result: IMeridianDef[] = MERIDIAN_DATA.map(m => ({
+    ...m,
+    side: MIDLINE_MERIDIANS.has(m.code) ? undefined : 'right' as const,
   }))
-})
+  for (const m of MERIDIAN_DATA) {
+    if (MIDLINE_MERIDIANS.has(m.code)) continue
+    result.push({
+      ...m,
+      side: 'left' as const,
+      pathPoints: m.pathPoints.map(([x, y, z]) => [-x, y, z] as Point3D),
+      keyAcupoints: m.keyAcupoints.map(ap => ({
+        ...ap,
+        position: [-ap.position[0], ap.position[1], ap.position[2]] as Point3D,
+      })),
+    })
+  }
+  return result
+})()
 
 // ── 经脉交互处理 ─────────────────────────────────────────────
 const meridianTubeRadius = 0.015
 const meridianTubeSegments = 64
 const meridianRadialSegments = 8
 
-// 创建经脉管道几何体（用于射线检测）
-const meridianTubes = computed(() => {
-  return meridianCurves.value.map(m => {
-    const def = MERIDIAN_DATA.find(d => d.code === m.code)
-    const tubeGeo = new THREE.TubeGeometry(m.curve, meridianTubeSegments, meridianTubeRadius, meridianRadialSegments, false)
-    return { code: m.code, geometry: tubeGeo, color: def?.color ?? '#64C8FF' }
-  })
+// 创建经脉管道几何体（静态数据，一次性计算，后续仅通过 updateMaterials 修改颜色）
+const meridianTubes = allMeridianData.map(m => {
+  const curve = new THREE.CatmullRomCurve3(
+    m.pathPoints.map(p => new THREE.Vector3(p[0], p[1], p[2])),
+    false,
+    'catmullrom',
+    0.5,
+  )
+  const def = MERIDIAN_DATA.find(d => d.code === m.code)
+  const tubeGeo = new THREE.TubeGeometry(curve, meridianTubeSegments, meridianTubeRadius, meridianRadialSegments, false)
+  return { code: m.code, side: m.side, geometry: tubeGeo, color: def?.color ?? '#64C8FF' }
 })
 
 // ── 收集 Three.js 对象引用（用于命令式更新材质）──────────────
-const tubeMeshes = new Map<MeridianCodeType, THREE.Mesh>()
+// 键格式：经脉code + 侧别后缀，如 'JM1-right'、'JM1-left'、'JM13'（中线无后缀）
+const tubeMeshes = new Map<string, THREE.Mesh>()
 const acupointMeshes = new Map<string, THREE.Mesh>()
 
 // ── 经脉点击处理 ─────────────────────────────────────────────
@@ -93,7 +120,7 @@ const handleBodyClick = (event: any) => {
 }
 
 // ── 经脉悬停处理 ─────────────────────────────────────────────
-const handleMeridianHover = (event: any, code: MeridianCodeType) => {
+const handleMeridianHover = (code: MeridianCodeType) => {
   meridian.onMeridianHover(code)
   const def = meridian.getMeridianDef(code)
   if (def) {
@@ -125,9 +152,12 @@ const updateMaterials = () => {
   const recorded = recordedSet.value
 
   // 更新经脉管道材质
-  tubeMeshes.forEach((mesh, code) => {
+  tubeMeshes.forEach((mesh, meshKey) => {
     const material = mesh.material as THREE.MeshPhysicalMaterial
     if (!material) return
+
+    // meshKey 格式: 'JM1-right' | 'JM1-left' | 'JM13'，提取经脉 code
+    const code = meshKey.split('-')[0] as MeridianCodeType
 
     const def = MERIDIAN_DATA.find(d => d.code === code)
     const baseColor = def?.color ?? '#64C8FF'
@@ -171,12 +201,21 @@ const updateMaterials = () => {
   })
 }
 
+// 使用 requestAnimationFrame 合并同一帧内的多次状态变化，避免高频交互时重复遍历 mesh
+let materialUpdatePending = false
+const scheduleMaterialUpdate = () => {
+  if (materialUpdatePending) return
+  materialUpdatePending = true
+  requestAnimationFrame(() => {
+    materialUpdatePending = false
+    updateMaterials()
+  })
+}
+
 // 监听状态变化，命令式更新材质
 watch(
   [() => meridian.activeMeridian.value, () => meridian.hoveredMeridian.value, recordedSet],
-  () => {
-    nextTick(updateMaterials)
-  },
+  scheduleMaterialUpdate,
   { deep: true }
 )
 
@@ -185,6 +224,62 @@ watch(() => meridian.modelLoaded.value, (loaded) => {
   if (loaded) {
     nextTick(updateMaterials)
   }
+})
+
+// ── 组件卸载时清理 Three.js 资源（防止 GPU 内存泄漏）────────
+onUnmounted(() => {
+  // 清理经脉管道几何体和材质
+  tubeMeshes.forEach((mesh) => {
+    mesh.geometry?.dispose()
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+    if (Array.isArray(mat)) {
+      mat.forEach(m => m.dispose())
+    } else {
+      mat?.dispose()
+    }
+  })
+  tubeMeshes.clear()
+
+  // 清理穴位球体几何体和材质
+  acupointMeshes.forEach((mesh) => {
+    mesh.geometry?.dispose()
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+    if (Array.isArray(mat)) {
+      mat.forEach(m => m.dispose())
+    } else {
+      mat?.dispose()
+    }
+  })
+  acupointMeshes.clear()
+
+  // 清理人体模型 GLB 场景树
+  const body = meridian.bodyModel.value
+  if (body) {
+    body.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry?.dispose()
+        const mat = child.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(mat)) {
+          mat.forEach(m => m.dispose())
+        } else {
+          mat?.dispose()
+        }
+      } else if (child instanceof THREE.LineSegments) {
+        child.geometry?.dispose()
+        const mat = child.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(mat)) {
+          mat.forEach(m => m.dispose())
+        } else {
+          mat?.dispose()
+        }
+      }
+    })
+  }
+
+  // 清理 meridianTubes 中缓存的 TubeGeometry
+  meridianTubes.forEach(tube => {
+    tube.geometry?.dispose()
+  })
 })
 </script>
 
@@ -197,6 +292,7 @@ watch(() => meridian.modelLoaded.value, (loaded) => {
     </div>
 
     <!-- 3D画布 -->
+    <div ref="canvasContainerRef" class="meridian-canvas-wrapper" @mousemove="updateTooltipPosition">
     <TresCanvas
       v-if="meridian.modelLoaded.value"
       class="meridian-canvas"
@@ -243,13 +339,13 @@ watch(() => meridian.modelLoaded.value, (loaded) => {
       <!-- 经脉管道（可点击碰撞体，使用静态初始颜色，状态变化通过命令式更新） -->
       <TresMesh
         v-for="tube in meridianTubes"
-        :key="tube.code"
+        :key="tube.code + (tube.side ? '-' + tube.side : '')"
         :geometry="tube.geometry"
         :user-data="{ meridianCode: tube.code }"
         @click="handleMeridianMeshClick"
-        @pointer-enter="(e: any) => handleMeridianHover(e, tube.code)"
+        @pointer-enter="() => handleMeridianHover(tube.code)"
         @pointer-leave="handleMeridianHoverEnd"
-        @vue:mounted="(el: any) => { if (el?.$__tresObject) tubeMeshes.set(tube.code, el.$__tresObject) }"
+        :ref="(el: any) => { const key = tube.code + (tube.side ? '-' + tube.side : ''); if (el?.$__tresObject) tubeMeshes.set(key, el.$__tresObject); else tubeMeshes.delete(key) }"
       >
         <TresMeshPhysicalMaterial
           :color="tube.color"
@@ -265,16 +361,16 @@ watch(() => meridian.modelLoaded.value, (loaded) => {
       </TresMesh>
 
       <!-- 穴位标记点（小球体） -->
-      <template v-for="m in MERIDIAN_DATA" :key="'points-' + m.code">
+      <template v-for="m in allMeridianData" :key="'points-' + m.code + (m.side ? '-' + m.side : '')">
         <TresMesh
           v-for="(ap, ai) in m.keyAcupoints"
-          :key="m.code + '-ap-' + ai"
+          :key="m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai"
           :position="ap.position"
           :user-data="{ meridianCode: m.code, acupointName: ap.name }"
           @click="(e: any) => { meridian.onMeridianClick(m.code, ap.position); emit('meridian-select', { meridianCode: m.code, point: ap.position }) }"
-          @pointer-enter="(e: any) => handleMeridianHover(e, m.code)"
+          @pointer-enter="() => handleMeridianHover(m.code)"
           @pointer-leave="handleMeridianHoverEnd"
-          @vue:mounted="(el: any) => { if (el?.$__tresObject) acupointMeshes.set(m.code + '-ap-' + ai, el.$__tresObject) }"
+          :ref="(el: any) => { const key = m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai; if (el?.$__tresObject) acupointMeshes.set(key, el.$__tresObject); else acupointMeshes.delete(key) }"
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
           <TresMeshPhysicalMaterial
@@ -289,6 +385,7 @@ watch(() => meridian.modelLoaded.value, (loaded) => {
         </TresMesh>
       </template>
     </TresCanvas>
+    </div>
 
     <!-- 悬停提示浮层 -->
     <div

@@ -298,21 +298,21 @@ export const COUGH_QUESTIONS: Record<string, IDetailQuestion> = {
     category: 'chillHeatDetail',
     doctorText: '请问您的冷热感觉具体表现在哪些部位？可以逐个告诉我。',
     options: [
-      { label: '心胸烦热', taCode: 'BHR3', semanticDesc: '胸口心里觉得发热烦躁', excludeAfter: ['BHR2'] },
-      { label: '头发热', taCode: 'BHR4', semanticDesc: '头部觉得发热', excludeAfter: ['BHR2'] },
-      { label: '胃脘热', taCode: 'BHR5', semanticDesc: '胃部区域觉得发热', excludeAfter: ['BHR2'] },
-      { label: '腹部热', taCode: 'BHR6', semanticDesc: '腹部区域觉得发热', excludeAfter: ['BHR2'] },
-      { label: '手心发热', taCode: 'BHR7', excludeAfter: ['BHR2'] },
-      { label: '脚心发热', taCode: 'BHR8', excludeAfter: ['BHR2'] },
-      { label: '头怕冷', taCode: 'BHR10', semanticDesc: '头部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '胃脘怕冷', taCode: 'BHR11', semanticDesc: '胃部区域怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '腹部怕冷', taCode: 'BHR12', semanticDesc: '腹部区域怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '手怕冷', taCode: 'BHR13', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '脚怕冷', taCode: 'BHR14', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '腰怕冷', taCode: 'BHR15', semanticDesc: '腰部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '背怕冷', taCode: 'BHR16', semanticDesc: '背部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '膝盖怕冷', taCode: 'BHR17', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '牙齿怕冷', taCode: 'BHR18', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '心胸烦热', taCode: 'BHR3', semanticDesc: '胸口心里觉得发热烦躁、心口烦热、胸闷发热', excludeAfter: ['BHR2'] },
+      { label: '头发热', taCode: 'BHR4', semanticDesc: '头部觉得发热、头热、头烫、头部发烫', excludeAfter: ['BHR2'] },
+      { label: '胃脘热', taCode: 'BHR5', semanticDesc: '胃部区域觉得发热、胃热、胃脘灼热、胃部发烫', excludeAfter: ['BHR2'] },
+      { label: '腹部热', taCode: 'BHR6', semanticDesc: '腹部区域觉得发热、肚子热、腹部灼热、腹部发烫', excludeAfter: ['BHR2'] },
+      { label: '手心发热', taCode: 'BHR7', semanticDesc: '手掌心发热、手心烫、手热', excludeAfter: ['BHR2'] },
+      { label: '脚心发热', taCode: 'BHR8', semanticDesc: '脚掌心发热、脚心烫、脚热、足心发热', excludeAfter: ['BHR2'] },
+      { label: '头怕冷', taCode: 'BHR10', semanticDesc: '头部怕冷、头冷、头凉、头部怕风、头部发冷', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '胃脘怕冷', taCode: 'BHR11', semanticDesc: '胃部怕冷、胃脘冷、胃凉、胃部发凉、胃部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '腹部怕冷', taCode: 'BHR12', semanticDesc: '腹部怕冷、肚子冷、肚子凉、腹部发凉、腹部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '手怕冷', taCode: 'BHR13', semanticDesc: '手怕冷、手冷、手凉、手发冷、手部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '脚怕冷', taCode: 'BHR14', semanticDesc: '脚怕冷、脚冷、脚凉、脚发冷、脚部畏寒、足冷', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '腰怕冷', taCode: 'BHR15', semanticDesc: '腰部怕冷、腰冷、腰凉、腰部发冷、腰部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '背怕冷', taCode: 'BHR16', semanticDesc: '背部怕冷、背冷、背凉、后背发冷、背部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '膝盖怕冷', taCode: 'BHR17', semanticDesc: '膝盖怕冷、膝冷、膝凉、膝盖发冷、膝部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '牙齿怕冷', taCode: 'BHR18', semanticDesc: '牙齿怕冷、牙冷、牙齿发凉、牙齿畏寒、遇冷牙疼', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
       { label: '已说明，没有其他', semanticDesc: '已经说完所有冷热部位，没有其他了' },
     ],
     isFreeInput: true,
@@ -724,12 +724,12 @@ export const INSOMNIA_QUESTIONS: Record<string, IDetailQuestion> = {
     category: 'chillHeatLocalHeat',
     doctorText: '请问您局部怕热具体表现在哪些部位？',
     options: [
-      { label: '心胸烦热', taCode: 'BHR3', semanticDesc: '胸口心里觉得发热烦躁' },
-      { label: '头发热', taCode: 'BHR4', semanticDesc: '头部觉得发热' },
-      { label: '胃脘热', taCode: 'BHR5', semanticDesc: '胃部区域觉得发热' },
-      { label: '腹部热', taCode: 'BHR6', semanticDesc: '腹部区域觉得发热' },
-      { label: '手心发热', taCode: 'BHR7' },
-      { label: '脚心发热', taCode: 'BHR8' },
+      { label: '心胸烦热', taCode: 'BHR3', semanticDesc: '胸口心里觉得发热烦躁、心口烦热、胸闷发热' },
+      { label: '头发热', taCode: 'BHR4', semanticDesc: '头部觉得发热、头热、头烫、头部发烫' },
+      { label: '胃脘热', taCode: 'BHR5', semanticDesc: '胃部区域觉得发热、胃热、胃脘灼热、胃部发烫' },
+      { label: '腹部热', taCode: 'BHR6', semanticDesc: '腹部区域觉得发热、肚子热、腹部灼热、腹部发烫' },
+      { label: '手心发热', taCode: 'BHR7', semanticDesc: '手掌心发热、手心烫、手热' },
+      { label: '脚心发热', taCode: 'BHR8', semanticDesc: '脚掌心发热、脚心烫、脚热、足心发热' },
       { label: '已说明，没有其他', semanticDesc: '已经说完所有冷热部位，没有其他了' },
     ],
     isFreeInput: true,
@@ -740,15 +740,15 @@ export const INSOMNIA_QUESTIONS: Record<string, IDetailQuestion> = {
     category: 'chillHeatLocalCold',
     doctorText: '请问您局部怕冷具体表现在哪些部位？',
     options: [
-      { label: '头怕冷', taCode: 'BHR10', semanticDesc: '头部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '胃脘怕冷', taCode: 'BHR11', semanticDesc: '胃部区域怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '腹部怕冷', taCode: 'BHR12', semanticDesc: '腹部区域怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '手怕冷', taCode: 'BHR13', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '脚怕冷', taCode: 'BHR14', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '腰怕冷', taCode: 'BHR15', semanticDesc: '腰部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '背怕冷', taCode: 'BHR16', semanticDesc: '背部怕冷畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '膝盖怕冷', taCode: 'BHR17', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
-      { label: '牙齿怕冷', taCode: 'BHR18', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '头怕冷', taCode: 'BHR10', semanticDesc: '头部怕冷、头冷、头凉、头部怕风、头部发冷', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '胃脘怕冷', taCode: 'BHR11', semanticDesc: '胃部怕冷、胃脘冷、胃凉、胃部发凉、胃部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '腹部怕冷', taCode: 'BHR12', semanticDesc: '腹部怕冷、肚子冷、肚子凉、腹部发凉、腹部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '手怕冷', taCode: 'BHR13', semanticDesc: '手怕冷、手冷、手凉、手发冷、手部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '脚怕冷', taCode: 'BHR14', semanticDesc: '脚怕冷、脚冷、脚凉、脚发冷、脚部畏寒、足冷', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '腰怕冷', taCode: 'BHR15', semanticDesc: '腰部怕冷、腰冷、腰凉、腰部发冷、腰部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '背怕冷', taCode: 'BHR16', semanticDesc: '背部怕冷、背冷、背凉、后背发冷、背部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '膝盖怕冷', taCode: 'BHR17', semanticDesc: '膝盖怕冷、膝冷、膝凉、膝盖发冷、膝部畏寒', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
+      { label: '牙齿怕冷', taCode: 'BHR18', semanticDesc: '牙齿怕冷、牙冷、牙齿发凉、牙齿畏寒、遇冷牙疼', followUpQuestions: ['nightUrine1', 'nightUrine2'] },
       { label: '已说明，没有其他', semanticDesc: '已经说完所有冷热部位，没有其他了' },
     ],
     isFreeInput: true,
@@ -1119,10 +1119,11 @@ export const INSOMNIA_QUESTIONS: Record<string, IDetailQuestion> = {
 }
 
 // ── 失眠问诊序列 ──────────────────────────────────────────────
+// 文档顺序：一入睡困难 → 二睡后易醒 → 三心脏/血热(追问) → 大便 → 四寒热 → 口渴 → 口味 → 出汗 → 乏力
 export const INSOMNIA_QUESTION_SEQUENCE: Record<string, string[]> = {
-  '有困意入睡困难': ['wakePattern', 'chillHeat', 'chillHeatSpecial', 'stoolConstipation', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
-  '无困意入睡困难': ['wakePattern', 'chillHeat', 'chillHeatSpecial', 'stoolConstipation', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
-  '入睡没有困难': ['wakePattern', 'chillHeat', 'chillHeatSpecial', 'stoolConstipation', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
+  '有困意入睡困难': ['wakePattern', 'stoolConstipation', 'chillHeat', 'chillHeatSpecial', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
+  '无困意入睡困难': ['wakePattern', 'stoolConstipation', 'chillHeat', 'chillHeatSpecial', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
+  '入睡没有困难': ['wakePattern', 'stoolConstipation', 'chillHeat', 'chillHeatSpecial', 'thirst', 'tastePungentIntro', 'tasteDryWet', 'tasteSticky', 'sweat', 'fatigue', 'fatigueShortBreath', 'fatigueEasyCold'],
 }
 
 // ── 慢性疲劳问诊问题库 ────────────────────────────────────────
@@ -1895,6 +1896,121 @@ export const SHARED_FATIGUE_QUESTIONS: Record<string, IDetailQuestion> = {
     options: [
       { label: '有', taCode: 'PQX4', severityQuestion: { subjectText: '出血不热', lighterCode: 'PQX4A', heavierCode: 'PQX4B' } },
       { label: '没有' },
+    ],
+  },
+}
+
+// ── 性别追问共享题库（13个通用追问，供无 SHARED_FOLLOWUP_MAP 的症状使用）──
+// 这些追问被 GENDER_QUESTIONS 中的选项通过 GENDER_DAMP_HEAT_FU / GENDER_DRYNESS_FU / GENDER_QI_STAGNATION_FU 引用
+// 咳嗽/失眠通过 SHARED_FOLLOWUP_MAP 映射到症状专属追问，其他症状直接查找此共享题库
+export const SHARED_GENDER_FOLLOWUP_QUESTIONS: Record<string, IDetailQuestion> = {
+  // ── 湿热组（5个）──
+  dampHeat1: {
+    category: 'dampHeat1',
+    doctorText: '请问您是否有湿疹或皮肤瘙痒的情况？',
+    options: [
+      { label: '有', taCode: 'PFE1', severityQuestion: { subjectText: '湿疹瘙痒', lighterCode: 'PFE1A', heavierCode: 'PFE1B' } },
+      { label: '没有', taCode: 'PFE1' },
+    ],
+  },
+  dampHeat2: {
+    category: 'dampHeat2',
+    doctorText: '请问您是否有脚气或足部异味？',
+    options: [
+      { label: '有', taCode: 'PFE2', severityQuestion: { subjectText: '脚气足癣', lighterCode: 'PFE2A', heavierCode: 'PFE2B' } },
+      { label: '没有', taCode: 'PFE2' },
+    ],
+  },
+  dampHeat3: {
+    category: 'dampHeat3',
+    doctorText: '请问您的小便是否浑浊？',
+    options: [
+      { label: '浑浊', taCode: 'PFE3', severityQuestion: { subjectText: '小便浑浊', lighterCode: 'PFE3A', heavierCode: 'PFE3B' } },
+      { label: '清澈', taCode: 'PFE3' },
+    ],
+  },
+  dampHeat_urineYellowHeat: {
+    category: 'dampHeat_urineYellowHeat',
+    doctorText: '请问您的小便是否发黄且有热感？',
+    options: [
+      { label: '发黄发热', taCode: 'PSR1', severityQuestion: { subjectText: '小便黄赤有热', lighterCode: 'PSR1A', heavierCode: 'PSR1B' } },
+      { label: '正常', taCode: 'PSR1' },
+    ],
+  },
+  dampHeat_urinePain: {
+    category: 'dampHeat_urinePain',
+    doctorText: '请问您小便时是否有疼痛或灼热感？',
+    options: [
+      { label: '有疼痛灼热', taCode: 'PSR2', severityQuestion: { subjectText: '小便疼痛灼热', lighterCode: 'PSR2A', heavierCode: 'PSR2B' } },
+      { label: '没有', taCode: 'PSR2' },
+    ],
+  },
+
+  // ── 干燥组（4个）──
+  tasteDrySkin: {
+    category: 'tasteDrySkin',
+    doctorText: '请问您是否有皮肤干燥的情况？',
+    options: [
+      { label: '皮肤干燥', taCode: 'PKZ1', severityQuestion: { subjectText: '皮肤干燥', lighterCode: 'PKZ1A', heavierCode: 'PKZ1B' } },
+      { label: '正常' },
+    ],
+  },
+  tasteChestHeat: {
+    category: 'tasteChestHeat',
+    doctorText: '请问您是否有心胸烦热的感觉？',
+    options: [
+      { label: '心胸烦热', taCode: 'PKZ2', severityQuestion: { subjectText: '心胸烦热', lighterCode: 'PKZ2A', heavierCode: 'PKZ2B' } },
+      { label: '没有' },
+    ],
+  },
+  tasteTinnitus: {
+    category: 'tasteTinnitus',
+    doctorText: '请问您是否有耳鸣的情况？',
+    options: [
+      { label: '有耳鸣', taCode: 'PKZ3', severityQuestion: { subjectText: '耳鸣', lighterCode: 'PKZ3A', heavierCode: 'PKZ3B' } },
+      { label: '没有' },
+    ],
+  },
+  tasteDreams: {
+    category: 'tasteDreams',
+    doctorText: '请问您是否多梦？',
+    options: [
+      { label: '多梦', taCode: 'PKZ4', severityQuestion: { subjectText: '多梦', lighterCode: 'PKZ4A', heavierCode: 'PKZ4B' } },
+      { label: '不多梦' },
+    ],
+  },
+
+  // ── 气滞组（4个）──
+  hypochondrium: {
+    category: 'hypochondrium',
+    doctorText: '请问您是否有胁肋部不适或胀满的感觉？',
+    options: [
+      { label: '有', taCode: 'PQZ1', severityQuestion: { subjectText: '胁肋胀满', lighterCode: 'PQZ1A', heavierCode: 'PQZ1B' } },
+      { label: '没有', taCode: 'PQZ1' },
+    ],
+  },
+  chestTight: {
+    category: 'chestTight',
+    doctorText: '请问您是否有胸闷的感觉？',
+    options: [
+      { label: '有', taCode: 'PQZ2', severityQuestion: { subjectText: '胸闷', lighterCode: 'PQZ2A', heavierCode: 'PQZ2B' } },
+      { label: '没有', taCode: 'PQZ2' },
+    ],
+  },
+  migraine: {
+    category: 'migraine',
+    doctorText: '请问您是否有偏头痛的情况？',
+    options: [
+      { label: '有', taCode: 'PQZ3', severityQuestion: { subjectText: '偏头痛', lighterCode: 'PQZ3A', heavierCode: 'PQZ3B' } },
+      { label: '没有', taCode: 'PQZ3' },
+    ],
+  },
+  throatLump: {
+    category: 'throatLump',
+    doctorText: '请问您是否有咽部异物感（感觉有东西堵着）？',
+    options: [
+      { label: '有', taCode: 'PQZ4', severityQuestion: { subjectText: '咽部异物感', lighterCode: 'PQZ4A', heavierCode: 'PQZ4B' } },
+      { label: '没有', taCode: 'PQZ4' },
     ],
   },
 }

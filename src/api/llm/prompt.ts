@@ -190,13 +190,24 @@ const TCM_SYMPTOM_MATCH_SYSTEM_PROMPT = `你是中医智能问诊系统的症状
 
 ### 触发追问的条件
 仅当用户只说了上位概念，**完全没有**提供任何区分信息时，才返回matchedLabels追问：
-- 用户只说"口渴"/"老是口渴" → 没说冷热偏好，也没说不想喝 → matchedLabels=["口渴喜热饮","口渴喜凉饮","口干但不想喝水"], clarificationQuestion="请问您口渴是想喝热的还是凉的？还是口干但不想喝水？"
-- 用户只说"怕冷"/"觉得冷" → 没说是整体还是局部 → matchedLabels=所有含"怕冷"的选项, clarificationQuestion="请问您怕冷是整体怕冷还是某个具体部位怕冷？"
-- 用户只说"出汗"/"老出汗" → 没说是白天还是夜间 → matchedLabels=所有含"出汗/汗"的选项, clarificationQuestion="请问您出汗是白天清醒时出还是睡觉时出？"
-- 用户只说"心烦"/"烦躁" → 没说是白天还是夜间 → matchedLabels=所有含"心烦"的选项, clarificationQuestion="请问您心烦是白天还是夜间？"
+- 用户只说"口渴"/"老是口渴"/"经常口渴" → 没说冷热偏好，也没说不想喝 → matchedLabels=所有含"口渴"的选项, clarificationQuestion="请问您口渴是想喝热的还是凉的？还是口干但不想喝水？"
+- 用户只说"怕冷"/"觉得冷"/"经常怕冷" → 没说是整体还是局部 → matchedLabels=所有含"怕冷"的选项, clarificationQuestion="请问您怕冷是整体都怕冷，还是某个具体部位怕冷？"
+- 用户只说"怕热"/"觉得热"/"经常怕热" → 没说是整体还是局部 → matchedLabels=所有含"怕热"的选项, clarificationQuestion="请问您怕热是整体都怕热，还是某个具体部位怕热？"
+- 用户只说"出汗"/"老出汗"/"经常出汗"/"容易出汗" → 没说是白天还是夜间 → matchedLabels=所有含"出汗/汗"的选项, clarificationQuestion="请问您出汗是白天清醒时出还是睡觉时出？汗液是清爽的还是粘腻的？"
+- 用户只说"心烦"/"烦躁"/"经常心烦" → 没说是白天还是夜间 → matchedLabels=所有含"心烦"的选项, clarificationQuestion="请问您心烦是白天还是夜间？"
+
+**关键判断原则**：程度副词（经常/老是/总是/很/比较/有点/容易/动不动）不提供区分信息，不改变分类方向。"经常怕冷"和"怕冷"一样是上位概念，"老是口渴"和"口渴"一样是上位概念。只有提供了具体区分维度（部位、时间、冷热偏好等）的信息才算有效区分。
 
 ### 追问语格式
 - **追问语必须使用选项的含义描述(semanticDesc)而非选项标签名(label)来提问**，确保用户二次回答时能从语义层面匹配到正确选项
+
+### 多部位批量匹配规则
+当用户在一次回答中**明确提到了多个具体部位或症状**时（如"头部和脚部""手和腰""胃和腹部"），应将其全部匹配到对应选项，通过 matchedLabels 返回所有匹配结果，而非只选一个。
+- 批量匹配条件：用户明确提到了2个或以上不同的具体部位/症状，且每个都能明确对应到一个选项
+- 批量匹配时：matchedLabel 设为 null（因为不是单一匹配），matchedLabels 列出所有精确匹配的选项名，clarificationQuestion 设为 null（不需要追问，直接全部记录）
+- 示例：用户说"头部和脚部"（上下文：局部怕冷）→ matchedLabel:null, matchedLabels:["头怕冷","脚怕冷"], clarificationQuestion:null
+- 示例：用户说"手和腰都怕冷" → matchedLabel:null, matchedLabels:["手怕冷","腰怕冷"], clarificationQuestion:null
+- 示例：用户说"头和肚子"（上下文：局部怕冷）→ matchedLabel:null, matchedLabels:["头怕冷","腹部怕冷"], clarificationQuestion:null
 
 ## 识别规则
 
@@ -205,7 +216,9 @@ const TCM_SYMPTOM_MATCH_SYSTEM_PROMPT = `你是中医智能问诊系统的症状
 3. 严格从系统选项中选择，不允许自行创造选项。当能精确匹配一个选项时，matchedLabel设为该选项；当模糊时，matchedLabels列出所有相关候选
 4. 如果用户的描述确实无法映射到任何选项 → matchedLabel为null、matchedLabels为空、confidence为0
 5. **精确匹配优先**：当用户的表达综合来看能明确指向一个选项时（即使包含的信息不止一个维度），必须用matchedLabel精确匹配。只有当用户仅提到上位概念、完全没有提供区分信息时，才用matchedLabels追问
-6. 用户的描述可能包含额外信息（程度、时间、触发条件等），只要核心症状能映射即可
+6. **多部位批量匹配**：当用户一次提到多个具体部位时，所有部位都匹配到对应选项后放入matchedLabels，matchedLabel设为null，clarificationQuestion设为null
+7. 用户的描述可能包含额外信息（程度、时间、触发条件等），只要核心症状能映射即可
+8. 上下文推理：医生问题中提到的"冷热感觉"等关键词，以及已记录的上下文信息（如"用户已记录：局部怕冷"），决定了匹配方向。用户说"头部"在"局部怕冷"上下文中应匹配"头怕冷"而非"头发热"
 
 ## 输出格式
 
@@ -217,6 +230,7 @@ export function buildOptionMatchMessages(
   stepId: string,
   options: { label: string; semanticDesc?: string }[],
   doctorText?: string,
+  contextHint?: string,
 ): ILlmRequestMessage[] {
   const stepDescriptionMap: Record<string, string> = {
     analysis_review: '舌脉分析结果确认',
@@ -239,6 +253,7 @@ export function buildOptionMatchMessages(
 
   const userPrompt = `当前问诊阶段：${stepDescription}
 ${doctorText ? `医生问的问题：${doctorText}` : ''}
+${contextHint ? `上下文信息：${contextHint}` : ''}
 可选选项：${optionsText}
 用户回答："${userText}"
 
