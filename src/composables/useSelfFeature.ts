@@ -478,13 +478,13 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
   }
 
   // ── 获取已记录的经脉编号集合（用于3D场景中标记已选经脉） ──
-  const getRecordedMeridianCodes = (): Set<MeridianCodeType> => {
+  const recordedMeridianCodes = computed((): Set<MeridianCodeType> => {
     const codes = new Set<MeridianCodeType>()
     for (const r of selfFeatureRecords.value) {
       if (r.meridianCode) codes.add(r.meridianCode as MeridianCodeType)
     }
     return codes
-  }
+  })
 
   return {
     selfFeatureSubStep,
@@ -507,6 +507,6 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
     resetSelfFeature,
     getSummaryText,
     handleMeridianSelect,
-    getRecordedMeridianCodes,
+    recordedMeridianCodes,
   }
 }

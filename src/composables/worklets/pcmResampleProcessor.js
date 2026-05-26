@@ -4,7 +4,7 @@
 class PCMResampleProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
-    this._active = false
+    this._active = true
     this._firCoeffs = null
     this._firOverlap = null
     this._agcPeak = 0

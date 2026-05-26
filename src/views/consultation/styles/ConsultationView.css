@@ -74,6 +74,12 @@
   box-shadow: var(--badge-shadow);
 }
 
+/* 3D经脉模式：缩小医生区域高度，留出对话区和语音输入区空间 */
+.doctor-section.is-meridian {
+  flex: 0 0 70%;
+  background: #0D1117;
+}
+
 .doctor-badge-dot {
   width: 16px;
   height: 16px;

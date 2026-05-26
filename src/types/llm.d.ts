@@ -48,6 +48,8 @@ export interface ILlmCallOptions {
   temperature?: number
   /** 最大返回 token 数 */
   maxTokens?: number
+  /** 是否启用思考模式（Qwen3.7 系列默认开启，设为 false 可加速响应） */
+  enableThinking?: boolean
 }
 
 /** LLM 用户信息提取结果 */

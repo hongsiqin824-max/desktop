@@ -37,6 +37,7 @@ export async function callLLM(
       messages,
       temperature: options?.temperature ?? 0.1,
       max_tokens: options?.maxTokens ?? 256,
+      enable_thinking: options?.enableThinking ?? false,
     }),
   })
 

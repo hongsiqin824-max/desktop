@@ -16,7 +16,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手太阴肺经',
     shortName: '肺经',
     yinYang: 'yin',
-    color: '#FFFFFF',
+    color: '#7EB8D4',  // soft sky blue - 肺经
     description: '肺经起于中焦，沿手臂内侧前缘走行至拇指端，是气血运行的起始经脉。',
     pathway: '起于中焦→下络大肠→还循胃口→上膈属肺→从肺系横出腋下→沿上臂内侧前缘下行→过肘窝→循前臂桡侧→入寸口→上鱼际→出拇指端（少商穴）',
     zone: 'upper',
@@ -50,7 +50,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手阳明大肠经',
     shortName: '大肠经',
     yinYang: 'yang',
-    color: '#FFE0B2',
+    color: '#D08770',  // warm terracotta - 大肠经
     description: '大肠经起于食指端，沿手臂外侧前缘上行至面部，与肺经相表里。',
     pathway: '起于食指末端（商阳穴）→沿食指桡侧上行→经合谷→沿前臂桡侧→过肘外侧→上臂外侧前缘→肩峰前缘→上出于颈椎→下入缺盆→络肺→下膈属大肠',
     zone: 'upper',
@@ -86,7 +86,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足阳明胃经',
     shortName: '胃经',
     yinYang: 'yang',
-    color: '#FFF59D',
+    color: '#EBCB8B',  // soft gold - 胃经
     description: '胃经起于鼻翼旁，经面部、胸腹前面、下肢前外侧至第二趾端，为多气多血之经。',
     pathway: '起于鼻翼旁（迎香穴）→上行至鼻根→入目内眦→下循鼻外→入上齿中→还出挟口环唇→沿下颌角→经耳前→上额角→从大迎前下走人迎→循喉咙→入缺盆→下膈属胃络脾→沿胸腹前面下行→经大腿前侧→膝髌→小腿前外侧→足背→第二趾端（厉兑穴）',
     zone: 'middle',
@@ -122,7 +122,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足太阴脾经',
     shortName: '脾经',
     yinYang: 'yin',
-    color: '#FFCC80',
+    color: '#D4A574',  // soft brown - 脾经
     description: '脾经起于大趾端，沿下肢内侧上行入腹属脾络胃，主运化水谷精微。',
     pathway: '起于大趾末端（隐白穴）→沿大趾内侧赤白肉际→经第一跖骨基底→内踝前→上小腿内侧→经膝股内侧前缘→入腹→属脾络胃→上膈→挟咽→连舌本散舌下',
     zone: 'middle',
@@ -156,7 +156,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手少阴心经',
     shortName: '心经',
     yinYang: 'yin',
-    color: '#EF9A9A',
+    color: '#BF616A',  // soft red - 心经
     description: '心经起于心中，沿手臂内侧后缘走行至小指端，与心和小肠相表里。',
     pathway: '起于心中→出属心系→下膈络小肠→从心系上挟咽→系目系→从心系却上肺→下出腋下→沿上臂内侧后缘→过肘→循前臂内侧后缘→抵掌后锐骨端→入掌内后廉→沿小指桡侧出其端（少冲穴）',
     zone: 'upper',
@@ -188,7 +188,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手太阳小肠经',
     shortName: '小肠经',
     yinYang: 'yang',
-    color: '#CE93D8',
+    color: '#B48EAD',  // soft purple - 小肠经
     description: '小肠经起于小指尺侧端，沿手臂外侧后缘上行至耳前，与小肠和心相表里。',
     pathway: '起于小指尺侧端（少泽穴）→沿手背尺侧上行→经腕部→沿前臂外侧后缘→过尺骨鹰嘴与肱骨内上髁之间→沿上臂外侧后缘→出肩后骨缝→绕肩胛→交肩上→入缺盆→络心→下膈抵胃→属小肠',
     zone: 'upper',
@@ -224,7 +224,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足太阳膀胱经',
     shortName: '膀胱经',
     yinYang: 'yang',
-    color: '#80CBC4',
+    color: '#8FBCBB',  // soft teal - 膀胱经
     description: '膀胱经是人体最长的经脉，起于目内眦，经头顶、后项、背腰、下肢后侧至小趾端。',
     pathway: '起于目内眦（睛明穴）→上额交巅→从巅入络脑→还出别下项→循肩膊内→挟脊抵腰中→入循膂→络肾属膀胱→从腰中下挟脊→贯臀→入腘中→从腘以下贯踹内→出外踝后→循京骨→至小趾外侧端（至阴穴）',
     zone: 'middle',
@@ -262,7 +262,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足少阴肾经',
     shortName: '肾经',
     yinYang: 'yin',
-    color: '#B0BEC5',
+    color: '#5E81AC',  // soft navy - 肾经
     description: '肾经起于足小趾下，斜走足心，沿下肢内侧后缘上行入腹属肾络膀胱。',
     pathway: '起于足小趾之下→斜走足心（涌泉穴）→出于然谷之下→循内踝之后→别入跟中→上踹内→出腘内廉→上股内后廉→贯脊属肾络膀胱→从肾上贯肝膈→入肺中→循喉咙→挟舌本',
     zone: 'lower',
@@ -299,7 +299,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手厥阴心包经',
     shortName: '心包经',
     yinYang: 'yin',
-    color: '#F48FB1',
+    color: '#D4879C',  // soft rose - 心包经
     description: '心包经起于胸中，沿手臂内侧中线走行至中指端，代心受邪。',
     pathway: '起于胸中→出属心包络→下膈→历络三焦→从胸出胁→下腋三寸→上行至腋下→沿上臂内侧→行手太阴少阴之间→入肘中→下臂行两筋之间→入掌中→循中指出其端（中冲穴）',
     zone: 'upper',
@@ -333,7 +333,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '手少阳三焦经',
     shortName: '三焦经',
     yinYang: 'yang',
-    color: '#A5D6A7',
+    color: '#A3BE8C',  // soft green - 三焦经
     description: '三焦经起于无名指尺侧端，沿手臂外侧中线行至耳后及眉梢，主司气化。',
     pathway: '起于无名指尺侧端（关冲穴）→上出两指之间→沿手背→出前臂外侧两骨之间→过肘尖→沿上臂外侧→上肩→交出足少阳之后→入缺盆→布膻中→散络心包→下膈→遍属三焦',
     zone: 'upper',
@@ -369,7 +369,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足少阳胆经',
     shortName: '胆经',
     yinYang: 'yang',
-    color: '#81C784',
+    color: '#88B4A0',  // soft sage - 胆经
     description: '胆经起于目外眦，经头侧、身侧、下肢外侧至第四趾端，主决断。',
     pathway: '起于目外眦（瞳子髎穴）→上抵头角→下耳后→循颈→至肩上→交出足阳明之后→入缺盆→下胸中→贯膈→络肝属胆→循胁里→出气街→绕毛际→横入髀厌中→沿大腿外侧→过膝外廉→下小腿外侧→出外踝前→循足跗→至第四趾端（足窍阴穴）',
     zone: 'middle',
@@ -408,7 +408,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '足厥阴肝经',
     shortName: '肝经',
     yinYang: 'yin',
-    color: '#90CAF9',
+    color: '#6B8E7B',  // muted forest - 肝经
     description: '肝经起于大趾丛毛际，沿下肢内侧中线上行入腹属肝络胆，主疏泄藏血。',
     pathway: '起于大趾丛毛之际（大敦穴）→上循足跗上廉→去内踝一寸→上踝八寸→交出太阴之后→上腘内廉→循股阴→入毛中→环阴器→抵小腹→挟胃→属肝络胆→上贯膈→布胁肋→循喉咙之后→上入颃颡→连目系→上出额→与督脉会于巅',
     zone: 'lower',
@@ -442,7 +442,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '任脉',
     shortName: '任脉',
     yinYang: 'yin',
-    color: '#B39DDB',
+    color: '#C4A0D4',  // soft lavender - 任脉
     description: '任脉起于会阴，沿腹胸正中线上行至承浆，为阴脉之海，总任一身之阴经。',
     pathway: '起于中极之下→以上毛际→循腹里→上关元→至咽喉→上颐→循面→入目',
     zone: 'middle',
@@ -475,7 +475,7 @@ export const MERIDIAN_DATA: IMeridianDef[] = [
     name: '督脉',
     shortName: '督脉',
     yinYang: 'yang',
-    color: '#FFAB91',
+    color: '#D4A08C',  // soft peach - 督脉
     description: '督脉起于长强，沿脊柱正中线上行至头顶，再向前至鼻柱下方，为阳脉之海，总督一身之阳经。',
     pathway: '起于下极之腧→并于脊里→上至风府→入属于脑→上巅→循额→至鼻柱→下至龈交',
     zone: 'middle',

@@ -1,15 +1,14 @@
 <!-- 经脉3D交互组件：人体模型 + 14条经脉曲线 + 穴位标记点 + 交互高亮 -->
-<!-- 科技风半透明主题，支持点击经脉、悬停高亮、视角切换 -->
+<!-- 科技风半透明主题，支持点击经脉、悬停高亮、自由旋转 -->
 <script setup lang="ts">
-import { ref, computed, watch, shallowRef, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import * as THREE from 'three'
-import type { MeridianCodeType, Point3D, ViewAngleType } from '@/types/meridian'
-import { MERIDIAN_DATA, VIEW_ANGLES } from '@/data/meridianData'
+import type { MeridianCodeType, Point3D } from '@/types/meridian'
+import { MERIDIAN_DATA } from '@/data/meridianData'
 import { useMeridianBody } from '@/composables/useMeridianBody'
 import MeridianInfoPanel from './MeridianInfoPanel.vue'
-import ViewAngleControls from './ViewAngleControls.vue'
 import RecordedMeridians from './RecordedMeridians.vue'
 import './styles/meridian.css'
 
@@ -39,14 +38,10 @@ const tooltipText = ref('')
 const tooltipX = ref(0)
 const tooltipY = ref(0)
 
-// 当前视角
-const currentView = ref<ViewAngleType>('front')
-
 // 经脉曲线的 THREE.CatmullRomCurve3 实例缓存
 const meridianCurves = computed(() => {
   return MERIDIAN_DATA.map(m => ({
     code: m.code,
-    color: m.color,
     curve: new THREE.CatmullRomCurve3(
       m.pathPoints.map(p => new THREE.Vector3(p[0], p[1], p[2])),
       false,
@@ -57,8 +52,6 @@ const meridianCurves = computed(() => {
 })
 
 // ── 经脉交互处理 ─────────────────────────────────────────────
-// 由于 TresJS 的 @click 事件无法直接绑定到 Line 对象，
-// 采用透明管道几何体（TubeGeometry）作为可点击的经脉碰撞体
 const meridianTubeRadius = 0.015
 const meridianTubeSegments = 64
 const meridianRadialSegments = 8
@@ -66,10 +59,15 @@ const meridianRadialSegments = 8
 // 创建经脉管道几何体（用于射线检测）
 const meridianTubes = computed(() => {
   return meridianCurves.value.map(m => {
+    const def = MERIDIAN_DATA.find(d => d.code === m.code)
     const tubeGeo = new THREE.TubeGeometry(m.curve, meridianTubeSegments, meridianTubeRadius, meridianRadialSegments, false)
-    return { code: m.code, geometry: tubeGeo }
+    return { code: m.code, geometry: tubeGeo, color: def?.color ?? '#64C8FF' }
   })
 })
+
+// ── 收集 Three.js 对象引用（用于命令式更新材质）──────────────
+const tubeMeshes = new Map<MeridianCodeType, THREE.Mesh>()
+const acupointMeshes = new Map<string, THREE.Mesh>()
 
 // ── 经脉点击处理 ─────────────────────────────────────────────
 const handleMeridianMeshClick = (event: any) => {
@@ -82,10 +80,9 @@ const handleMeridianMeshClick = (event: any) => {
   emit('meridian-select', { meridianCode: code, point })
 }
 
-// ── 人体模型点击处理（模式C：空白区域自动匹配最近经脉） ──────
+// ── 人体模型点击处理（模式C：空白区域自动匹配最近经脉）─────
 const handleBodyClick = (event: any) => {
   if (!event?.point) return
-  // 如果点击的是经脉管道（已有meridianCode），不处理
   if (event.object?.userData?.meridianCode) return
   const point: Point3D = [event.point.x, event.point.y, event.point.z]
   const nearest = meridian.findNearestMeridian(point)
@@ -110,35 +107,6 @@ const handleMeridianHoverEnd = () => {
   tooltipVisible.value = false
 }
 
-// ── 视角切换 ─────────────────────────────────────────────────
-const handleViewChange = (view: ViewAngleType) => {
-  currentView.value = view
-  const target = meridian.animateToView(view)
-  if (cameraRef.value && controlsRef.value) {
-    // 使用简单的线性插值动画
-    const camera = cameraRef.value
-    const controls = controlsRef.value
-    const startPos = camera.position.clone()
-    const startTarget = controls.target.clone()
-    const duration = 800
-    const startTime = performance.now()
-
-    const animate = () => {
-      const elapsed = performance.now() - startTime
-      const t = Math.min(elapsed / duration, 1)
-      // 使用缓动函数 easeInOutCubic
-      const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-
-      camera.position.lerpVectors(startPos, target.position, ease)
-      controls.target.lerpVectors(startTarget, target.lookAt, ease)
-      controls.update()
-
-      if (t < 1) requestAnimationFrame(animate)
-    }
-    requestAnimationFrame(animate)
-  }
-}
-
 // ── 关闭经脉信息面板 ─────────────────────────────────────────
 const handlePanelClose = () => {
   meridian.clearActive()
@@ -150,27 +118,74 @@ const activeMeridianDef = computed(() => {
   return meridian.getMeridianDef(meridian.activeMeridian.value) ?? null
 })
 
-// ── 经脉管道材质计算（根据状态返回不同颜色） ─────────────────
-const getMeridianTubeColor = (code: MeridianCodeType): string => {
-  if (meridian.activeMeridian.value === code) return '#FF6B35'
-  if (meridian.hoveredMeridian.value === code) return '#FFD700'
-  if (recordedSet.value.has(code)) return '#00E676'
-  return 'rgba(100, 200, 255, 0.6)'
+// ── 命令式更新材质（避免响应式模板绑定导致的循环更新）────────
+const updateMaterials = () => {
+  const active = meridian.activeMeridian.value
+  const hovered = meridian.hoveredMeridian.value
+  const recorded = recordedSet.value
+
+  // 更新经脉管道材质
+  tubeMeshes.forEach((mesh, code) => {
+    const material = mesh.material as THREE.MeshPhysicalMaterial
+    if (!material) return
+
+    const def = MERIDIAN_DATA.find(d => d.code === code)
+    const baseColor = def?.color ?? '#64C8FF'
+    let color = baseColor
+    let emissive = baseColor
+    let opacity = 0.7
+
+    if (active === code) {
+      color = '#FF6B35'
+      emissive = '#FF6B35'
+      opacity = 1.0
+    } else if (hovered === code) {
+      color = '#FFD700'
+      emissive = '#FFD700'
+      opacity = 1.0
+    } else if (recorded.has(code)) {
+      color = '#00E676'
+      emissive = '#00E676'
+      opacity = 1.0
+    } else if (active && active !== code) {
+      opacity = 0.2
+    }
+
+    material.color.set(color)
+    material.emissive.set(emissive)
+    material.opacity = opacity
+    material.needsUpdate = true
+  })
+
+  // 更新穴位材质
+  acupointMeshes.forEach((mesh, key) => {
+    const material = mesh.material as THREE.MeshPhysicalMaterial
+    if (!material) return
+
+    const code = mesh.userData?.meridianCode as MeridianCodeType
+    const isActive = active === code
+
+    material.color.set(isActive ? '#FF6B35' : '#FFD700')
+    material.emissive.set(isActive ? '#FF6B35' : '#FFD700')
+    material.needsUpdate = true
+  })
 }
 
-const getMeridianTubeEmissive = (code: MeridianCodeType): string => {
-  if (meridian.activeMeridian.value === code) return '#FF6B35'
-  if (meridian.hoveredMeridian.value === code) return '#FFD700'
-  if (recordedSet.value.has(code)) return '#00E676'
-  return '#1a3a5c'
-}
+// 监听状态变化，命令式更新材质
+watch(
+  [() => meridian.activeMeridian.value, () => meridian.hoveredMeridian.value, recordedSet],
+  () => {
+    nextTick(updateMaterials)
+  },
+  { deep: true }
+)
 
-const getMeridianTubeOpacity = (code: MeridianCodeType): number => {
-  if (meridian.activeMeridian.value === code) return 1.0
-  if (meridian.hoveredMeridian.value === code) return 1.0
-  if (meridian.activeMeridian.value && meridian.activeMeridian.value !== code) return 0.2
-  return 0.7
-}
+// 场景加载完成后初始化材质
+watch(() => meridian.modelLoaded.value, (loaded) => {
+  if (loaded) {
+    nextTick(updateMaterials)
+  }
+})
 </script>
 
 <template>
@@ -225,7 +240,7 @@ const getMeridianTubeOpacity = (code: MeridianCodeType): number => {
         @click="handleBodyClick"
       />
 
-      <!-- 经脉管道（可点击碰撞体） -->
+      <!-- 经脉管道（可点击碰撞体，使用静态初始颜色，状态变化通过命令式更新） -->
       <TresMesh
         v-for="tube in meridianTubes"
         :key="tube.code"
@@ -234,13 +249,14 @@ const getMeridianTubeOpacity = (code: MeridianCodeType): number => {
         @click="handleMeridianMeshClick"
         @pointer-enter="(e: any) => handleMeridianHover(e, tube.code)"
         @pointer-leave="handleMeridianHoverEnd"
+        @vue:mounted="(el: any) => { if (el?.$__tresObject) tubeMeshes.set(tube.code, el.$__tresObject) }"
       >
         <TresMeshPhysicalMaterial
-          :color="getMeridianTubeColor(tube.code)"
-          :emissive="getMeridianTubeEmissive(tube.code)"
+          :color="tube.color"
+          :emissive="tube.color"
           :emissive-intensity="0.5"
           :transparent="true"
-          :opacity="getMeridianTubeOpacity(tube.code)"
+          :opacity="0.7"
           :roughness="0.2"
           :metalness="0.8"
           :clearcoat="1.0"
@@ -258,11 +274,12 @@ const getMeridianTubeOpacity = (code: MeridianCodeType): number => {
           @click="(e: any) => { meridian.onMeridianClick(m.code, ap.position); emit('meridian-select', { meridianCode: m.code, point: ap.position }) }"
           @pointer-enter="(e: any) => handleMeridianHover(e, m.code)"
           @pointer-leave="handleMeridianHoverEnd"
+          @vue:mounted="(el: any) => { if (el?.$__tresObject) acupointMeshes.set(m.code + '-ap-' + ai, el.$__tresObject) }"
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
           <TresMeshPhysicalMaterial
-            :color="meridian.activeMeridian.value === m.code ? '#FF6B35' : '#FFD700'"
-            :emissive="meridian.activeMeridian.value === m.code ? '#FF6B35' : '#FFD700'"
+            :color="'#FFD700'"
+            :emissive="'#FFD700'"
             :emissive-intensity="0.8"
             :transparent="true"
             :opacity="0.9"
@@ -284,15 +301,8 @@ const getMeridianTubeOpacity = (code: MeridianCodeType): number => {
 
     <!-- 操作提示 -->
     <div v-if="meridian.modelLoaded.value" class="meridian-hint">
-      点击经脉线或身体部位查看经络信息
+      拖拽旋转 · 滚轮缩放 · 点击查看经络详情
     </div>
-
-    <!-- 视角切换按钮 -->
-    <ViewAngleControls
-      v-if="meridian.modelLoaded.value"
-      :current-view="currentView"
-      @view-change="handleViewChange"
-    />
 
     <!-- 已记录经脉指示器 -->
     <RecordedMeridians

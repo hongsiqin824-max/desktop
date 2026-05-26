@@ -83,6 +83,38 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
           child.add(wireframe)
         }
       })
+      // 归一化模型坐标：将模型缩放/平移到与经脉数据相同的坐标空间
+      // 经脉数据假设：Y=0为脚底，Y≈1.8为头顶，X/Z≈0为身体中心
+      const box = new THREE.Box3().setFromObject(scene)
+      const size = new THREE.Vector3()
+      const center = new THREE.Vector3()
+      box.getSize(size)
+      box.getCenter(center)
+
+      // 目标高度：经脉数据的Y范围约 0~1.8
+      const TARGET_HEIGHT = 1.8
+      const scaleFactor = TARGET_HEIGHT / size.y
+
+      // 先重置模型变换，避免累积
+      scene.position.set(0, 0, 0)
+      scene.rotation.set(0, 0, 0)
+      scene.scale.set(1, 1, 1)
+
+      // 缩放模型使高度匹配
+      scene.scale.setScalar(scaleFactor)
+
+      // 重新计算缩放后的包围盒
+      const scaledBox = new THREE.Box3().setFromObject(scene)
+      const scaledCenter = scaledBox.getCenter(new THREE.Vector3())
+      const scaledMin = scaledBox.min.clone()
+
+      // 平移：脚底对齐Y=0，水平居中对齐X=0/Z=0
+      scene.position.x -= scaledCenter.x
+      scene.position.z -= scaledCenter.z
+      scene.position.y -= scaledMin.y
+
+      console.log('[MeridianBody] Model normalized:', { originalHeight: size.y.toFixed(3), scaleFactor: scaleFactor.toFixed(3), finalBox: new THREE.Box3().setFromObject(scene) })
+
       bodyModel.value = scene
       modelLoaded.value = true
     } catch (error) {

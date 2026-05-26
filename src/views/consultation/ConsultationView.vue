@@ -526,8 +526,33 @@ const onSubmitText = async (text: string) => {
     }
   }
 
+  // ── detail_question 程度追问处理（detailSeverityPending 存在时，选项固定为"较轻/较重"）──
+  if (currentStepId.value === 'detail_question' && detail.detailSeverityPending.value) {
+    isTyping.value = true
+    const severityOptions = [
+      { label: '较重', semanticDesc: '用户表达程度严重、很厉害、挺重、比较重、很严重、有点重、蛮重、特别重，核心是"程度偏重"' },
+      { label: '较轻', semanticDesc: '用户表达程度轻微、不太严重、还好、还行、一般般、不重、不怎么重、一点点，核心是"程度轻微"' },
+    ]
+    const optionResult = await classifyOption(text, 'detail_question', severityOptions, `请问${detail.detailSeverityPending.value.subjectText}的程度是较轻还是较重？`); isTyping.value = false
+    if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
+      detail.detailFailCount.value = 0
+      const lastIdx = messages.value.length - 1
+      if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+      await detail.handleDetailOptionClick(optionResult.matchedLabel!)
+      return
+    }
+    // LLM 未匹配，交由 handleDetailSubmitText 显示重试提示
+    await detail.handleDetailSubmitText(text)
+    return
+  }
+
   // ── 大模型分类 ─────────────────────────────────────────────
-  const hasOptions = step.options && step.options.length > 0
+  // detail_question 的选项是动态的（从题库获取），需要特殊处理
+  let hasOptions = step.options && step.options.length > 0
+  if (!hasOptions && currentStepId.value === 'detail_question') {
+    const question = detail.findQuestion(detail.detailQuestionCategory.value)
+    hasOptions = !!(question?.options && question.options.length > 0)
+  }
   const isIntent = INTENT_STEPS.has(currentStepId.value)
 
   if (isIntent) {
@@ -540,9 +565,7 @@ const onSubmitText = async (text: string) => {
     let llmOptions: { label: string; semanticDesc?: string }[]
 
     if (currentStepId.value === 'detail_question') {
-  
-      const questionSet = DETAIL_QUESTION_MAP[currentSymptom.value] || COLD_QUESTIONS
-      const question = questionSet[detail.detailQuestionCategory.value]
+      const question = detail.findQuestion(detail.detailQuestionCategory.value)
       currentDoctorText = question?.doctorText
       llmOptions = (question?.options || step.options!).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
     } else {
@@ -557,14 +580,19 @@ const onSubmitText = async (text: string) => {
 
     if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
       clarificationCandidates.value = []
+
+      // detail_question 的特殊处理：选项是动态的，直接调用 handleDetailOptionClick
+      if (currentStepId.value === 'detail_question') {
+        detail.detailFailCount.value = 0
+        const lastIdx = messages.value.length - 1
+        if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+        await detail.handleDetailOptionClick(optionResult.matchedLabel!)
+        return
+      }
+
+      // 其他步骤：从 step.options 中查找并调用
       const matched = step.options!.find(opt => opt.label === optionResult.matchedLabel)
       if (matched) {
-        if (currentStepId.value === 'detail_question' || currentStepId.value === 'self_feature_question') {
-          detail.detailFailCount.value = 0
-          const lastIdx = messages.value.length - 1
-          if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
-          await onOptionClick(matched.label, matched.nextStep, matched.payload); return
-        }
         await goToStep(matched.nextStep, matched.payload); return
       }
     }
@@ -582,7 +610,6 @@ const onSubmitText = async (text: string) => {
       else await doctorSay(generateResponse('SEVERITY_UNMATCHED', { symptom: currentSymptom.value }))
       break
     }
-    case 'detail_question': await detail.handleDetailSubmitText(text); break
     case 'self_feature_question': await selfFeature.handleSelfFeatureSubmitText(text); break
     default: await doctorSay(buildFallbackQuestion()); break
   }
@@ -618,11 +645,11 @@ onUnmounted(() => { ttsStop() })
   <div class="consultation-view">
 
     <!-- 顶部：医生形象 / 自选特征阶段显示3D经脉模型 -->
-    <div class="doctor-section">
+    <div class="doctor-section" :class="{ 'is-meridian': isSelfFeaturePhase }">
       <!-- 自选特征阶段：显示3D经脉交互模型（替代 body.png） -->
       <MeridianBodyView
         v-if="isSelfFeaturePhase"
-        :recorded-meridians="selfFeature.getRecordedMeridianCodes()"
+        :recorded-meridians="selfFeature.recordedMeridianCodes.value"
         @meridian-select="selfFeature.handleMeridianSelect"
       />
       <!-- 非自选特征阶段：显示老中医师形象（保持不变） -->

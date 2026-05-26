@@ -349,5 +349,6 @@ export function useDetailQuestion(ctx: IDetailContext) {
     initFirstQuestion,
     getFirstQuestionText,
     resetCounters,
+    findQuestion,
   }
 }
