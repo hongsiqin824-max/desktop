@@ -1,51 +1,77 @@
-// 语音朗读组合式函数：百炼CosyVoice合成+打字机同步
+// 语音朗读组合式函数：百炼 Qwen3-TTS-Flash-Realtime 流式合成 + 打字机同步
+// WebSocket 流式文本 → PCM 音频帧 → Web Audio API 边收边播
 import { ref } from 'vue'
 import type { PersonaType } from '@/types/consultation'
 
 export type { PersonaType }
 
-const TTS_PROXY_URL = '/tts-proxy/tts'
+const WS_PATH = '/tts-proxy'
+const TTS_MODEL = 'qwen3-tts-flash-realtime'
+const TTS_SAMPLE_RATE = 24000
+
+const VOICE_MAP: Record<PersonaType, string> = {
+  nurse: 'Cherry',
+  doctor: 'Ethan',
+}
 
 const PERSONA_CHARS_PER_SEC: Record<PersonaType, number> = {
   nurse: 3.6,
   doctor: 3.4,
 }
 
+/** PCM 帧累积到该样本数后再调度播放（约 186ms @22050Hz），减少 AudioBufferSourceNode 数量 */
+const PCM_BUFFER_THRESHOLD = 4096
+
 export function useTTS() {
   const isSpeaking = ref(false)
   const isSupported = ref(true)
 
-  let _currentAudio: HTMLAudioElement | null = null
-  let _audioUrl: string | null = null
+  // ── 可变状态 ──
+  let ws: WebSocket | null = null
+  let audioContext: AudioContext | null = null
   let typewriterTimer: ReturnType<typeof setInterval> | null = null
   let safetyTimer: ReturnType<typeof setTimeout> | null = null
+  let pcmBuffer: Int16Array[] = []
+  let pcmBufferLen = 0
+  let nextPlayTime = 0
+  let lastSourceEndTime = 0
+  let firstAudioReceived = false
+  let typewriterStarted = false
+  let twCharIndex = 0
+  let _onChar: ((char: string) => void) | null = null
+  let _twText = ''
 
+  // ── 清理所有资源 ──
   const clearSafetyTimer = () => {
-    if (safetyTimer) {
-      clearTimeout(safetyTimer)
-      safetyTimer = null
-    }
+    if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null }
   }
 
-  const cleanupAudio = () => {
-    if (_currentAudio) {
-      _currentAudio.pause()
-      _currentAudio.oncanplay = null
-      _currentAudio.onended = null
-      _currentAudio.onerror = null
-      _currentAudio = null
+  const cleanup = () => {
+    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null }
+    clearSafetyTimer()
+    if (ws) {
+      ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null
+      try { ws.close() } catch { /* ignore */ }
+      ws = null
     }
-    if (_audioUrl) {
-      URL.revokeObjectURL(_audioUrl)
-      _audioUrl = null
+    if (audioContext) {
+      try { audioContext.close() } catch { /* ignore */ }
+      audioContext = null
     }
+    pcmBuffer = []
+    pcmBufferLen = 0
+    nextPlayTime = 0
+    lastSourceEndTime = 0
+    firstAudioReceived = false
+    typewriterStarted = false
+    twCharIndex = 0
+    _onChar = null
+    _twText = ''
   }
 
+  // ── 强制输出打字机剩余文字 ──
   const finishTypewriter = (text: string, charIndex: number, onChar: (char: string) => void) => {
-    if (typewriterTimer) {
-      clearInterval(typewriterTimer)
-      typewriterTimer = null
-    }
+    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null }
     isSpeaking.value = false
     while (charIndex < text.length) {
       onChar(text[charIndex] ?? '')
@@ -53,106 +79,246 @@ export function useTTS() {
     }
   }
 
-  const speakCloud = (
+  // ── 启动打字机动画 ──
+  const startTypewriter = (text: string, onChar: (char: string) => void) => {
+    if (typewriterStarted) return
+    typewriterStarted = true
+    _twText = text
+    _onChar = onChar
+    twCharIndex = 0
+
+    const charsPerSec = 3.4
+    const charDelay = 1000 / charsPerSec
+
+    typewriterTimer = setInterval(() => {
+      if (twCharIndex < text.length) {
+        onChar(text[twCharIndex] ?? '')
+        twCharIndex++
+      } else {
+        if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null }
+      }
+    }, charDelay)
+  }
+
+  // ── 将累积的 PCM 缓冲区调度到 AudioContext 播放 ──
+  const schedulePcmBuffer = () => {
+    if (!audioContext || pcmBufferLen === 0) {
+      console.log('[TTS] schedulePcmBuffer: 跳过, audioContext=', !!audioContext, 'pcmBufferLen=', pcmBufferLen)
+      return
+    }
+
+    const totalSamples = pcmBufferLen
+    const merged = new Int16Array(totalSamples)
+    let offset = 0
+    for (const chunk of pcmBuffer) {
+      merged.set(chunk, offset)
+      offset += chunk.length
+    }
+    pcmBuffer = []
+    pcmBufferLen = 0
+
+    // PCM16 → Float32
+    const float32 = new Float32Array(totalSamples)
+    for (let i = 0; i < totalSamples; i++) {
+      float32[i] = (merged[i] ?? 0) / 32768
+    }
+
+    const audioBuffer = audioContext.createBuffer(1, totalSamples, TTS_SAMPLE_RATE)
+    audioBuffer.getChannelData(0).set(float32)
+
+    const source = audioContext.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(audioContext.destination)
+
+    const now = audioContext.currentTime
+    if (nextPlayTime < now) {
+      nextPlayTime = now + 0.02
+    }
+
+    source.start(nextPlayTime)
+    nextPlayTime += audioBuffer.duration
+    lastSourceEndTime = nextPlayTime
+
+    console.log(`[TTS] schedulePcmBuffer: 调度音频, samples=${totalSamples}, duration=${audioBuffer.duration.toFixed(3)}s, startTime=${(nextPlayTime - audioBuffer.duration).toFixed(3)}, endTime=${lastSourceEndTime.toFixed(3)}, ctxTime=${now.toFixed(3)}`)
+  }
+
+  // ── 处理单个 PCM 帧（解码 + 累积 + 达标后调度）──
+  const handleAudioDelta = (data: string | ArrayBuffer) => {
+    if (!audioContext) return
+
+    let pcm16: Int16Array
+    if (typeof data === 'string') {
+      const binary = atob(data)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      pcm16 = new Int16Array(bytes.buffer)
+    } else {
+      pcm16 = new Int16Array(data)
+    }
+
+    if (pcm16.length === 0) return
+
+    pcmBuffer.push(pcm16)
+    pcmBufferLen += pcm16.length
+
+    if (pcmBufferLen >= PCM_BUFFER_THRESHOLD) {
+      schedulePcmBuffer()
+    }
+  }
+
+  // ── 核心：WebSocket 流式 TTS ──
+  const speakCloud = async (
     text: string,
     persona: PersonaType,
     onChar: (char: string) => void,
-    resolve: () => void,
     doResolve: () => void,
-    charIndexRef: { value: number },
   ): void => {
     let resolved = false
     const localResolve = () => {
       if (resolved) return
       resolved = true
+      const savedIndex = twCharIndex
+      cleanup()
+      finishTypewriter(text, savedIndex, onChar)
       doResolve()
     }
 
-    const charsPerSec = PERSONA_CHARS_PER_SEC[persona]
-    const charDelay = 1000 / charsPerSec
-    const estimatedMs = (text.length / charsPerSec) * 1000 + 15000
-    safetyTimer = setTimeout(localResolve, Math.max(estimatedMs, 30000))
-
     isSpeaking.value = true
 
-    const doFetch = (retriesLeft: number): Promise<ArrayBuffer | null> => {
-      return fetch(TTS_PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, persona }),
-      })
-        .then(r => {
-          if (!r.ok) {
-            if (retriesLeft > 0) {
-              return new Promise<ArrayBuffer | null>(r2 => {
-                setTimeout(() => { doFetch(retriesLeft - 1).then(r2) }, 500)
-              })
-            }
-            return null
-          }
-          return r.arrayBuffer()
-        })
-        .catch(() => {
-          if (retriesLeft > 0) {
-            return new Promise<ArrayBuffer | null>(r2 => {
-              setTimeout(() => { doFetch(retriesLeft - 1).then(r2) }, 500)
-            })
-          }
-          return null
-        })
+    // 安全超时兜底（TTS 合成时间 + 音频播放时间 + 30s 余量）
+    const charsPerSec = PERSONA_CHARS_PER_SEC[persona]
+    const estimatedMs = (text.length / charsPerSec) * 1000 + 30000
+    safetyTimer = setTimeout(localResolve, Math.max(estimatedMs, 30000))
+
+    // 创建 AudioContext（WS 连接期间初始化，减少首帧延迟）
+    try {
+      audioContext = new AudioContext()
+      await audioContext.resume()
+    } catch {
+      // AudioContext 不可用 → 降级为纯文字
+      localResolve()
+      return
     }
 
-    doFetch(1).then(audioData => {
-      if (!audioData || !isSpeaking.value) {
-        localResolve()
-        return
-      }
+    // ── 建立 WebSocket ──
+    try {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      ws = new WebSocket(`${protocol}//${location.host}${WS_PATH}`)
+    } catch {
+      localResolve()
+      return
+    }
 
-      const blob = new Blob([audioData], { type: 'audio/wav' })
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
+    ws.onopen = () => {
+      if (!ws || resolved) return
 
-      _currentAudio = audio
-      _audioUrl = url
+      // 1. 配置会话：模型 + 音色 + PCM 输出
+      ws.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          model: TTS_MODEL,
+          voice: VOICE_MAP[persona] ?? 'Cherry',
+          output_audio_format: 'pcm',
+        },
+      }))
 
-      let started = false
+      // 2. 发送待合成文本
+      ws.send(JSON.stringify({
+        type: 'input_text_buffer.append',
+        text,
+      }))
 
-      audio.oncanplay = () => {
-        if (started) return
-        started = true
-        if (!isSpeaking.value) return
+      // 3. 提交文本（server_commit 模式下自动生成音频，不需要 response.create）
+      ws.send(JSON.stringify({
+        type: 'input_text_buffer.commit',
+      }))
+    }
 
-        // 启动打字机
-        typewriterTimer = setInterval(() => {
-          if (charIndexRef.value < text.length) {
-            onChar(text[charIndexRef.value] ?? '')
-            charIndexRef.value++
-          } else {
-            if (typewriterTimer) {
-              clearInterval(typewriterTimer)
-              typewriterTimer = null
+    ws.onmessage = (ev) => {
+      if (resolved) return
+      if (typeof ev.data !== 'string') return
+
+      try {
+        const event = JSON.parse(ev.data)
+
+        switch (event.type) {
+          case 'session.created':
+          case 'session.updated':
+            // 会话就绪，等待音频帧
+            break
+
+          case 'response.audio.delta': {
+            // 首个音频帧：启动打字机
+            if (!firstAudioReceived) {
+              firstAudioReceived = true
+              console.log('[TTS] 首个音频帧到达，AudioContext state:', audioContext?.state)
+              startTypewriter(text, onChar)
             }
+            // 解码并调度 PCM 帧
+            const delta = event.delta ?? event.audio ?? event.data
+            if (delta) {
+              const beforeLen = pcmBufferLen
+              handleAudioDelta(delta)
+              console.log(`[TTS] 音频帧: base64长度=${delta.length}, 缓冲前=${beforeLen}, 缓冲后=${pcmBufferLen}`)
+            }
+            break
           }
-        }, charDelay)
 
-        // 播放音频
-        audio.play().catch(() => {
-          localResolve()
-        })
-      }
+          case 'response.audio.done':
+            // 音频生成完毕，刷出残余 PCM 缓冲，但不 resolve（等 response.done）
+            console.log('[TTS] response.audio.done')
+            if (pcmBufferLen > 0) schedulePcmBuffer()
+            break
 
-      audio.onended = () => {
-        cleanupAudio()
+          case 'response.done': {
+            console.log('[TTS] response.done, lastSourceEndTime=', lastSourceEndTime.toFixed(3), 'ctxTime=', audioContext?.currentTime.toFixed(3))
+            // 刷出任何残留缓冲
+            if (pcmBufferLen > 0) schedulePcmBuffer()
+
+            // 等待音频播放完毕后 resolve
+            if (audioContext && lastSourceEndTime > 0) {
+              const remainingMs = Math.max(
+                0,
+                (lastSourceEndTime - audioContext.currentTime) * 1000 + 300,
+              )
+              console.log('[TTS] 等待音频播放完毕, remainingMs=', remainingMs.toFixed(0))
+              setTimeout(localResolve, remainingMs)
+            } else {
+              // 未收到任何音频 → 直接 resolve（降级为纯文字）
+              console.log('[TTS] 未收到音频或播放时间未知, 直接 resolve')
+              localResolve()
+            }
+            break
+          }
+
+          case 'error':
+            console.error('[TTS] server error:', event.error?.message ?? event)
+            localResolve()
+            break
+
+          // input_text_buffer.committed / response.created 等中间事件 → 忽略
+          default:
+            break
+        }
+      } catch { /* JSON 解析异常，忽略 */ }
+    }
+
+    ws.onerror = () => {
+      console.error('[TTS] WebSocket error')
+    }
+
+    ws.onclose = (ev: CloseEvent) => {
+      if (!resolved) {
+        // 连接异常关闭（非正常 response.done 后关闭）→ 降级
+        console.warn(`[TTS] WebSocket closed unexpectedly: code=${ev.code}, reason=${ev.reason}`)
         localResolve()
       }
-
-      audio.onerror = () => {
-        cleanupAudio()
-        localResolve()
-      }
-    })
+    }
   }
 
+  // ── 对外接口：同步语音朗读（返回 Promise，resolve 时朗读+打字机均完成）──
   const speakSync = (
     text: string,
     persona: PersonaType,
@@ -160,27 +326,18 @@ export function useTTS() {
   ): Promise<void> => {
     return new Promise<void>((resolve) => {
       let resolved = false
-      const charIndexRef = { value: 0 }
-
       const doResolve = () => {
         if (resolved) return
         resolved = true
-        clearSafetyTimer()
-        finishTypewriter(text, charIndexRef.value, onChar)
         resolve()
       }
-
-      speakCloud(text, persona, onChar, resolve, doResolve, charIndexRef)
+      speakCloud(text, persona, onChar, doResolve)
     })
   }
 
+  // ── 对外接口：立即停止朗读 ──
   const stop = () => {
-    cleanupAudio()
-    if (typewriterTimer) {
-      clearInterval(typewriterTimer)
-      typewriterTimer = null
-    }
-    clearSafetyTimer()
+    cleanup()
     isSpeaking.value = false
   }
 

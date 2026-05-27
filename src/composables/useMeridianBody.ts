@@ -44,6 +44,12 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
   const hoveredMeridian = ref<MeridianCodeType | null>(null)
   const activeMeridian = ref<MeridianCodeType | null>(null)
 
+  // ── 模型变换参数（用于场景坐标→经脉数据坐标的逆变换） ────────
+  let modelScale = 1
+  let modelOffsetX = 0
+  let modelOffsetY = 0
+  let modelOffsetZ = 0
+
   // ── 经脉定义查找 ────────────────────────────────────────────
   const getMeridianDef = (code: MeridianCodeType): IMeridianDef | undefined => {
     return MERIDIAN_DATA.find(m => m.code === code)
@@ -81,6 +87,9 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
             })
           )
           child.add(wireframe)
+          // 禁用人体模型和线框的射线检测，确保点击穿透到经脉管道
+          child.raycast = () => {}
+          wireframe.raycast = () => {}
         }
       })
       // 归一化模型坐标：将模型缩放/平移到与经脉数据相同的坐标空间
@@ -97,7 +106,7 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
 
       // 先重置模型变换，避免累积
       scene.position.set(0, 0, 0)
-      scene.rotation.set(0, 0, 0)
+      scene.rotation.set(0, Math.PI / 2, 0)
       scene.scale.set(1, 1, 1)
 
       // 缩放模型使高度匹配
@@ -112,6 +121,12 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
       scene.position.x -= scaledCenter.x
       scene.position.z -= scaledCenter.z
       scene.position.y -= scaledMin.y
+
+      // 保存变换参数（findNearestMeridian 用于坐标逆变换）
+      modelScale = scaleFactor
+      modelOffsetX = scene.position.x
+      modelOffsetY = scene.position.y
+      modelOffsetZ = scene.position.z
 
       console.log('[MeridianBody] Model normalized:', { originalHeight: size.y.toFixed(3), scaleFactor: scaleFactor.toFixed(3), finalBox: new THREE.Box3().setFromObject(scene) })
 
@@ -156,16 +171,29 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
   const findNearestMeridian = (point: Point3D): MeridianCodeType | null => {
     let minDist = Infinity
     let nearest: MeridianCodeType | null = null
-    const px = point[0], py = point[1], pz = point[2]
+
+    // 将场景坐标逆变换回经脉数据坐标（人体模型经过 rotation Y=π/2 + scale + translate）
+    // 1. 移除平移偏移
+    const sx = point[0] - modelOffsetX
+    const sy = point[1] - modelOffsetY
+    const sz = point[2] - modelOffsetZ
+    // 2. 除以缩放
+    const ux = sx / modelScale
+    const uy = sy / modelScale
+    const uz = sz / modelScale
+    // 3. 逆旋转 R_y(π/2)⁻¹ = R_y(-π/2): (x,y,z) → (-z, y, x)
+    const mx = -uz
+    const my = uy
+    const mz = ux
 
     for (const meridian of MERIDIAN_DATA) {
       const isMidline = MIDLINE_CODES.has(meridian.code)
 
       for (const mp of meridian.pathPoints) {
         // 右侧（原始点）
-        const dxR = px - mp[0]
-        const dyR = py - mp[1]
-        const dzR = pz - mp[2]
+        const dxR = mx - mp[0]
+        const dyR = my - mp[1]
+        const dzR = mz - mp[2]
         const distR = Math.sqrt(dxR * dxR + dyR * dyR + dzR * dzR)
         if (distR < minDist) {
           minDist = distR
@@ -174,9 +202,9 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
 
         // 左侧（X取反的镜像点）
         if (!isMidline) {
-          const dxL = px - (-mp[0])
-          const dyL = py - mp[1]
-          const dzL = pz - mp[2]
+          const dxL = mx - (-mp[0])
+          const dyL = my - mp[1]
+          const dzL = mz - mp[2]
           const distL = Math.sqrt(dxL * dxL + dyL * dyL + dzL * dzL)
           if (distL < minDist) {
             minDist = distL

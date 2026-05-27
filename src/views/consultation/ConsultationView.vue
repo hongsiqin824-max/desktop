@@ -341,7 +341,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   }
   if (stepId === 'self_feature_intro') {
     selfFeature.resetSelfFeature()
-    text = '接下来，我请您在右边这个人体经脉图上，点击您感觉不舒服的位置。每条经脉对应不同的脏腑和气血通道，您点上去就能看到经脉名称和基本信息。选好经脉之后，再告诉我是什么感觉，最多可以记录5处不适。'
+    text = '接下来，我请您在上面的人体经脉图上，点击您感觉不舒服的位置。每条经脉对应不同的脏腑和气血通道，您点上去就能看到经脉名称和基本信息。选好经脉之后，再告诉我是什么感觉，最多可以记录5处不适。'
   }
   if (stepId === 'self_feature_summary') text = selfFeature.getSummaryText()
   if (stepId === 'syndrome_output') {
@@ -591,6 +591,15 @@ const onSubmitText = async (text: string) => {
         const lastIdx = messages.value.length - 1
         if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
         await detail.handleDetailOptionClick(optionResult.matchedLabel!)
+        return
+      }
+
+      // self_feature_question 的特殊处理：子步骤（meridian→nature→severity→continue）由 handleSelfFeatureOptionClick 统一管理
+      // 不走通用 goToStep（会跳过 subStep 状态流转，导致 pushRecord 不执行、数据丢失、流程卡死）
+      if (currentStepId.value === 'self_feature_question') {
+        const lastIdx = messages.value.length - 1
+        if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+        await selfFeature.handleSelfFeatureOptionClick(optionResult.matchedLabel!)
         return
       }
 
