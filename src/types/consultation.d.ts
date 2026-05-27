@@ -98,6 +98,7 @@ export interface IDetailAnswer {
   taCode: string
   label: string
   category: string
+  questionText?: string
 }
 
 // ── 回应规范类型 ──────────────────────────────────────────────

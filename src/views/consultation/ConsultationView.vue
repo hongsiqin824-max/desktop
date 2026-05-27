@@ -7,9 +7,9 @@ import type { PersonaType } from '@/composables/useTTS'
 import { useLLM } from '@/composables/useLLM'
 import type { IIntentResult } from '@/types/llm'
 import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
-import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput } from '@/types/consultation'
+import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput, IDetailAnswer } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
-import { generateMockSyndromeOutput } from '@/data/syndromeOutput'
+import { generateMockSyndromeOutput, mergeSeverityDuplicates, getCategoryTitle } from '@/data/syndromeOutput'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
 import type { MeridianCodeType } from '@/types/meridian'
@@ -62,6 +62,32 @@ const errorToastText = ref('')
 // ── 异常回答关键词 ────────────────────────────────────────────
 const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
 const invalidRetryCount = ref(0)
+
+const buildDetailSummary = (answers: IDetailAnswer[]): string => {
+  const merged = mergeSeverityDuplicates(answers)
+
+  // 按分类分组，保持出现顺序
+  const groups: { title: string; items: IDetailAnswer[] }[] = []
+  for (const a of merged) {
+    const title = getCategoryTitle(a.category)
+    const existing = groups.find(g => g.title === title)
+    if (existing) existing.items.push(a)
+    else groups.push({ title, items: [a] })
+  }
+
+  // 格式化
+  const lines = groups.map(g => {
+    const entries = g.items.map(a => {
+      if (a.label === '没有') {
+        return a.questionText ? `${a.questionText} → ${a.label}` : a.label
+      }
+      return a.label
+    })
+    return `【${g.title}】${entries.join('、')}`
+  })
+
+  return lines.join('\n')
+}
 
 // ── 工具函数 ─────────────────────────────────────────────────
 const scrollToBottom = async () => {
@@ -336,7 +362,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     text = detail.getFirstQuestionText(currentSymptom.value, firstCategory)
   }
   if (stepId === 'detail_summary') {
-    const summary = detail.detailAnswers.value.map(a => a.label).join('、')
+    const summary = buildDetailSummary(detail.detailAnswers.value)
     text = generateResponse('DETAIL_SUMMARY', { summary })
   }
   if (stepId === 'self_feature_intro') {

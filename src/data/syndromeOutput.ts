@@ -3,6 +3,77 @@
 
 import type { ISyndromeOutput, IDetailAnswer, ISelfFeatureRecord, IAnalysisData } from '@/types/consultation'
 
+// ── 共享：category → 中文分类标题 ────────────────────────────
+const CATEGORY_TITLE_MAP: Record<string, string> = {
+  chillHeat: '寒热', chillHeatDetail: '寒热', chillHeatLocalCold: '寒热', chillHeatLocalHeat: '寒热',
+  chillHeatSpecial: '寒热', chillHeatTideTime: '寒热',
+  nasal: '鼻部',
+  sweat: '出汗', sweat_bleeding: '出汗', sweat_enuresis: '出汗', sweat_palpitations: '出汗',
+  thirst: '口渴',
+  taste: '口味', tasteDryWet: '口味', tastePungent: '口味', tastePungentIntro: '口味',
+  tasteSticky: '口味', tasteChestHeat: '口味', tasteDreams: '口味',
+  tasteDrySkin: '口味', tasteTinnitus: '口味',
+  appetite: '食欲',
+  stool: '大便', stoolConstipation: '大便', stoolDiarrhea: '大便',
+  stoolDiscomfort: '大便', stoolUnformed: '大便',
+  urine: '小便',
+  sleep: '睡眠', sleepDifficulty: '睡眠', wakePattern: '睡眠',
+  energy: '精力',
+  mood: '情绪',
+  coughType: '咳嗽', coughVoiceDull: '咳嗽', coughVoiceLoud: '咳嗽',
+  throatItch: '咽喉', throatRedness: '咽喉', throatLump: '咽喉',
+  heartPalpitation: '心悸', heartPainType: '心胸', chestTight: '胸胁',
+  chestTightness: '胸胁', hypochondrium: '胸胁',
+  migraine: '头痛', headacheLocation: '头痛', headacheChillHeat: '头痛', painNature: '头痛',
+  fatigue: '乏力', fatigueEasyCold: '乏力', fatigueShortBreath: '乏力',
+  fatigue_bleeding: '乏力', fatigue_chest: '乏力', fatigue_hypochondrium: '乏力',
+  fatigue_migraine: '乏力', fatigue_pharynx: '乏力',
+  dampHeat1: '湿热', dampHeat2: '湿热', dampHeat3: '湿热',
+  dampHeat_urinePain: '湿热', dampHeat_urineYellowHeat: '湿热',
+  bloodStasis_lipPurple: '血瘀', bloodStasis_skinRough: '血瘀', bloodStasis_subBruise: '血瘀',
+  gender_menstrual_cycle: '月经', gender_menstrual_volume: '月经', gender_menstrual_color: '月经',
+  gender_leukorrhea: '带下', gender_breast: '乳房',
+  gender_impotence: '男性功能', gender_premature: '男性功能', gender_ejaculation: '男性功能',
+  gender_semen: '精液', gender_testicle: '睾丸', gfu_penisCold: '生殖器',
+}
+const CATEGORY_PREFIX_MAP: Record<string, string> = {
+  cough: '咳嗽', insomnia: '失眠', headache: '头痛',
+  fatigue: '乏力', dampHeat: '湿热', bloodStasis: '血瘀', gender: '妇科',
+}
+export const getCategoryTitle = (cat: string): string => {
+  if (CATEGORY_TITLE_MAP[cat]) return CATEGORY_TITLE_MAP[cat]
+  for (const [prefix, title] of Object.entries(CATEGORY_PREFIX_MAP)) {
+    if (cat.startsWith(prefix)) return title
+  }
+  return '其他'
+}
+
+// ── 共享：合并程度追问（"X" + "X(较轻/较重)" → 只保留带程度的）────
+export const mergeSeverityDuplicates = (answers: IDetailAnswer[]): IDetailAnswer[] => {
+  const merged: IDetailAnswer[] = []
+  for (const a of answers) {
+    const sameCat = merged.filter(m => m.category === a.category)
+    const parenMatch = a.label.match(/^(.+?)\((较轻|较重)\)$/)
+    if (parenMatch) {
+      const baseLabel = parenMatch[1]
+      const idx = sameCat.findIndex(m => m.label === baseLabel)
+      if (idx >= 0) {
+        const target = sameCat[idx]!
+        const globalIdx = merged.indexOf(target)
+        merged.splice(globalIdx, 1)
+      }
+    } else {
+      const hasSeverity = sameCat.some(m => {
+        const p = m.label.match(/^(.+?)\((较轻|较重)\)$/)
+        return p && p[1] === a.label
+      })
+      if (hasSeverity) continue
+    }
+    merged.push(a)
+  }
+  return merged
+}
+
 // ── 主症→病种分类映射 ────────────────────────────────────────
 const DISEASE_CATEGORY_MAP: Record<string, string> = {
   '感冒': '外感病',
@@ -286,8 +357,10 @@ export function generateMockSyndromeOutput(
 
   const diseaseCategory = DISEASE_CATEGORY_MAP[symptom] ?? '未分类'
 
-  const mainSymptoms = detailAnswers.length > 0
-    ? detailAnswers.map(a => a.label)
+  const merged = mergeSeverityDuplicates(detailAnswers)
+  const filtered = merged.filter(a => a.label !== '没有')
+  const mainSymptoms = filtered.length > 0
+    ? filtered.map(a => `[${getCategoryTitle(a.category)}] ${a.label}`)
     : base.mainSymptoms
 
   const selfFeatureSymptoms = selfFeatureRecords.map(

@@ -44,6 +44,22 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
+        '/tts-vc-proxy': {
+          target: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+          changeOrigin: true,
+          ws: true,
+          rewrite: (path) => {
+            const stripped = path.replace(/^\/tts-vc-proxy/, '')
+            const separator = stripped.includes('?') ? '&' : '?'
+            return `${stripped}${separator}model=qwen3-tts-vc-realtime-2026-01-15`
+          },
+          configure: (proxy) => {
+            const apiKey = env.VITE_LLM_API_KEY
+            proxy.on('proxyReqWs', (proxyReq) => {
+              if (apiKey) proxyReq.setHeader('Authorization', `Bearer ${apiKey}`)
+            })
+          },
+        },
         '/asr-proxy': {
           target: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
           changeOrigin: true,

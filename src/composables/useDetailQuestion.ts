@@ -175,6 +175,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
         taCode: severityTaCode,
         label: `${detailSeverityPending.value.parentLabel}(${label})`,
         category: detailSeverityPending.value.parentCategory,
+        questionText: `请问${detailSeverityPending.value.subjectText}的程度是较轻还是较重？`,
       })
 
       const pending = detailSeverityPending.value
@@ -230,7 +231,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
 
       // 有 taCode 的选项才记录答案，没有 taCode 的是否定选项（不记录编码，仅推进流程）
       if (matchedOpt.taCode) {
-        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category })
+        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
       }
 
       if (matchedOpt.followUpQuestions && matchedOpt.followUpQuestions.length > 0) {
@@ -328,7 +329,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
 
       // 记录答案
       if (matchedOpt.taCode) {
-        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category })
+        detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
       }
 
       // 收集追问（稍后统一插入队列）

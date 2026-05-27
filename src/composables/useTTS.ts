@@ -5,13 +5,19 @@ import type { PersonaType } from '@/types/consultation'
 
 export type { PersonaType }
 
-const WS_PATH = '/tts-proxy'
-const TTS_MODEL = 'qwen3-tts-flash-realtime'
+const WS_PATH_MAP: Record<PersonaType, string> = {
+  nurse: '/tts-proxy',
+  doctor: '/tts-vc-proxy',
+}
+const TTS_MODEL_MAP: Record<PersonaType, string> = {
+  nurse: 'qwen3-tts-flash-realtime',
+  doctor: 'qwen3-tts-vc-realtime-2026-01-15',
+}
 const TTS_SAMPLE_RATE = 24000
 
 const VOICE_MAP: Record<PersonaType, string> = {
   nurse: 'Cherry',
-  doctor: 'Ethan',
+  doctor: 'qwen-tts-vc-tcmvoice-voice-20260527162848169-c755',
 }
 
 const PERSONA_CHARS_PER_SEC: Record<PersonaType, number> = {
@@ -89,12 +95,22 @@ export function useTTS() {
 
     const charsPerSec = 3.4
     const charDelay = 1000 / charsPerSec
+    // 不发音字符立即输出，不占用打字时间，确保与语音同步
+    const isNonSpoken = (ch: string) => /[\n\s【】→、。，：；]/.test(ch)
 
     typewriterTimer = setInterval(() => {
+      // 不发音字符立即连续输出（不占时间）
+      while (twCharIndex < text.length && isNonSpoken(text[twCharIndex] ?? '')) {
+        onChar(text[twCharIndex] ?? '')
+        twCharIndex++
+      }
+      // 发音字符按正常速度输出
       if (twCharIndex < text.length) {
         onChar(text[twCharIndex] ?? '')
         twCharIndex++
-      } else {
+      }
+      // 所有字符输出完毕，停止定时器
+      if (twCharIndex >= text.length) {
         if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null }
       }
     }, charDelay)
@@ -205,7 +221,7 @@ export function useTTS() {
     // ── 建立 WebSocket ──
     try {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${location.host}${WS_PATH}`)
+      ws = new WebSocket(`${protocol}//${location.host}${WS_PATH_MAP[persona]}`)
     } catch {
       localResolve()
       return
@@ -218,7 +234,7 @@ export function useTTS() {
       ws.send(JSON.stringify({
         type: 'session.update',
         session: {
-          model: TTS_MODEL,
+          model: TTS_MODEL_MAP[persona],
           voice: VOICE_MAP[persona] ?? 'Cherry',
           output_audio_format: 'pcm',
         },
