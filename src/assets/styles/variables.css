@@ -91,10 +91,6 @@
   --chat-user-shadow: var(--shadow-medium);
 
   /* 医生形象区 */
-  --doctor-section-bg-from: var(--color-beige-500);
-  --doctor-section-bg-to: var(--theme-bg-warm);
-  --doctor-badge-bg: var(--badge-bg);
-  --doctor-badge-shadow: var(--shadow-light);
   --doctor-badge-text: var(--color-brown-700);
 
   /* 选项按钮 */
@@ -215,17 +211,6 @@
   /* ── 经脉3D场景色值（科技风半透明主题） ─────────────────── */
   --meridian-scene-bg: #0D1117;
   --meridian-scene-bg-gradient: #161B22;
-  --meridian-body-color: rgba(56, 139, 253, 0.15);
-  --meridian-body-wireframe: rgba(56, 139, 253, 0.30);
-  --meridian-body-glow: rgba(56, 139, 253, 0.10);
-  --meridian-line-default: rgba(100, 200, 255, 0.60);
-  --meridian-line-hover: #FFD700;
-  --meridian-line-active: #FF6B35;
-  --meridian-line-recorded: #00E676;
-  --meridian-point-default: rgba(255, 215, 0, 0.80);
-  --meridian-point-hover: #FFFFFF;
-  --meridian-point-glow: rgba(255, 215, 0, 0.40);
-  --meridian-zone-overlay: rgba(56, 139, 253, 0.08);
 
   /* 经脉信息面板 */
   --meridian-panel-bg: rgba(13, 17, 23, 0.95);
@@ -235,14 +220,15 @@
   --meridian-panel-sub: #8B949E;
   --meridian-panel-accent: #FFD700;
   --meridian-panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-
-  /* 视角切换按钮 */
-  --meridian-btn-bg: rgba(22, 27, 34, 0.80);
+  --meridian-panel-code-bg: rgba(255, 215, 0, 0.10);
+  --meridian-panel-code-border: rgba(255, 215, 0, 0.30);
+  --meridian-close-btn-bg: rgba(255, 255, 255, 0.05);
+  --meridian-close-btn-hover-bg: rgba(255, 255, 255, 0.10);
+  --meridian-pathway-bg: rgba(56, 139, 253, 0.06);
+  --meridian-acupoint-tag-bg: rgba(255, 215, 0, 0.08);
+  --meridian-acupoint-tag-border: rgba(255, 215, 0, 0.20);
+  --meridian-hint-bg: rgba(22, 27, 34, 0.80);
   --meridian-btn-border: rgba(56, 139, 253, 0.30);
-  --meridian-btn-text: #C9D1D9;
-  --meridian-btn-active-bg: rgba(56, 139, 253, 0.20);
-  --meridian-btn-active-border: #58A6FF;
-  --meridian-btn-active-text: #58A6FF;
 
   /* 已记录经脉指示器 */
   --meridian-recorded-bg: rgba(0, 230, 118, 0.15);

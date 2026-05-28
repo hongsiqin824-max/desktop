@@ -15,10 +15,11 @@ export interface IDetailContext {
   goToStep: (stepId: StepIdType, symptom?: string) => Promise<void>
   doctorSay: (text: string, delay?: number) => Promise<void>
   scrollToBottom: () => Promise<void>
+  confirmLastUserMessage: () => void
 }
 
 export function useDetailQuestion(ctx: IDetailContext) {
-  const { currentSymptom, messages, detailIsFirstQuestion, detailBranch, detailQuestionQueue, goToStep, doctorSay, scrollToBottom } = ctx
+  const { currentSymptom, messages, detailIsFirstQuestion, detailBranch, detailQuestionQueue, goToStep, doctorSay, scrollToBottom, confirmLastUserMessage } = ctx
 
   const detailQuestionCategory = ref<string>('chillHeat')
   const detailAskedCategories = ref<Set<string>>(new Set())
@@ -98,7 +99,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
       detailAskedCategories.value.add(category)
       detailQuestionCategory.value = category
       const currentQ = findQuestion(category)
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       if (currentQ) {
         await doctorSay(currentQ.doctorText)
       }
@@ -149,7 +150,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
     if (detailQuestionQueue.value.length > 0) {
       detailQuestionCategory.value = detailQuestionQueue.value.shift()!
       detailAskedCategories.value.add(detailQuestionCategory.value)
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       const nextQ = findQuestion(detailQuestionCategory.value)
       if (nextQ) {
         await doctorSay(nextQ.doctorText)
@@ -223,7 +224,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
       if (matchedOpt.excludeAfter && matchedOpt.excludeAfter.length > 0) {
         const answeredCodes = new Set(detailAnswers.value.map(a => a.taCode))
         if (matchedOpt.excludeAfter.some(code => answeredCodes.has(code))) {
-          await doctorSay(generateResponse('O_VALID'), 300)
+          confirmLastUserMessage()
           await advanceDetailQueue()
           return true
         }
@@ -250,7 +251,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
             ? resolveFollowUps(matchedOpt.severityQuestion.followUpQuestions)
             : undefined,
         }
-        await doctorSay(generateResponse('O_VALID'), 300)
+        confirmLastUserMessage()
         await doctorSay(`请问${matchedOpt.severityQuestion.subjectText}的程度是较轻还是较重？`)
         return true
       }
@@ -381,6 +382,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
     detailAnswers,
     detailSeverityPending,
     detailFailCount,
+    genderQuestionsInjected,
     handleDetailOptionClick,
     handleDetailSubmitText,
     handleDetailBatchSelect,

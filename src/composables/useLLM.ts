@@ -2,7 +2,7 @@
 
 import { ref } from 'vue'
 import { callLLM } from '@/api/llm'
-import { buildIntentMessages, parseIntentResult, buildOptionMatchMessages, parseOptionMatchResult } from '@/api/llm/prompt'
+import { buildIntentMessages, parseIntentResult, buildOptionMatchMessages, parseOptionMatchResult } from '@/data/llmPrompt'
 import type { IIntentResult, IOptionMatchResult } from '@/types/llm'
 
 const LLM_TIMEOUT_MS = 8000
@@ -10,6 +10,16 @@ const LLM_TIMEOUT_MS = 8000
 export function useLLM() {
   const isLoading = ref(false)
   const error = ref('')
+
+  // 当前正在进行的 LLM 请求控制器，用于取消
+  let currentController: AbortController | null = null
+
+  const abort = () => {
+    if (currentController) {
+      currentController.abort()
+      currentController = null
+    }
+  }
 
   const recognizeIntent = async (
     userText: string,
@@ -19,21 +29,26 @@ export function useLLM() {
     isLoading.value = true
     error.value = ''
 
+    const messages = buildIntentMessages(userText, stepId, currentSymptom)
+
+    abort()
+    currentController = new AbortController()
+    const resultPromise = callLLM(messages, { signal: currentController.signal })
+
+    let timeoutId: ReturnType<typeof setTimeout> = undefined!
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('LLM 超时')), LLM_TIMEOUT_MS)
+    })
+
     try {
-      const messages = buildIntentMessages(userText, stepId, currentSymptom)
-
-      const resultPromise = callLLM(messages)
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('LLM 超时')), LLM_TIMEOUT_MS)
-      })
-
       const raw = await Promise.race([resultPromise, timeoutPromise])
+      clearTimeout(timeoutId)
       const result = parseIntentResult(raw)
 
       isLoading.value = false
       return result
     } catch (e) {
+      clearTimeout(timeoutId)
       const msg = e instanceof Error ? e.message : '意图识别失败'
       error.value = msg
       isLoading.value = false
@@ -51,21 +66,26 @@ export function useLLM() {
     isLoading.value = true
     error.value = ''
 
+    const messages = buildOptionMatchMessages(userText, stepId, options, doctorText, contextHint)
+
+    abort()
+    currentController = new AbortController()
+    const resultPromise = callLLM(messages, { signal: currentController.signal })
+
+    let timeoutId: ReturnType<typeof setTimeout> = undefined!
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('LLM 超时')), LLM_TIMEOUT_MS)
+    })
+
     try {
-      const messages = buildOptionMatchMessages(userText, stepId, options, doctorText, contextHint)
-
-      const resultPromise = callLLM(messages)
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('LLM 超时')), LLM_TIMEOUT_MS)
-      })
-
       const raw = await Promise.race([resultPromise, timeoutPromise])
+      clearTimeout(timeoutId)
       const result = parseOptionMatchResult(raw)
 
       isLoading.value = false
       return result
     } catch (e) {
+      clearTimeout(timeoutId)
       const msg = e instanceof Error ? e.message : '选项分类失败'
       error.value = msg
       isLoading.value = false
@@ -73,5 +93,5 @@ export function useLLM() {
     }
   }
 
-  return { isLoading, error, recognizeIntent, classifyOption }
+  return { isLoading, error, recognizeIntent, classifyOption, abort }
 }

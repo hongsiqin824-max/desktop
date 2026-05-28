@@ -76,44 +76,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── 视角切换按钮组 ─────────────────────────────────────────── */
-.view-angle-controls {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 16px;
-  z-index: 15;
-}
-
-.view-angle-btn {
-  height: 64px;
-  padding: 0 32px;
-  background: var(--meridian-btn-bg);
-  border: 2px solid var(--meridian-btn-border);
-  border-radius: 32px;
-  color: var(--meridian-btn-text);
-  font-size: 26px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
-}
-
-.view-angle-btn:active {
-  background: var(--meridian-btn-active-bg);
-  border-color: var(--meridian-btn-active-border);
-  color: var(--meridian-btn-active-text);
-  transform: scale(0.95);
-}
-
-.view-angle-btn.active {
-  background: var(--meridian-btn-active-bg);
-  border-color: var(--meridian-btn-active-border);
-  color: var(--meridian-btn-active-text);
-}
-
 /* ── 经络信息面板 ───────────────────────────────────────────── */
 .meridian-info-panel {
   position: absolute;
@@ -155,17 +117,17 @@
 .meridian-panel-code {
   font-size: 24px;
   color: var(--meridian-panel-accent);
-  background: rgba(255, 215, 0, 0.10);
+  background: var(--meridian-panel-code-bg);
   padding: 4px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 215, 0, 0.30);
+  border: 1px solid var(--meridian-panel-code-border);
 }
 
 .meridian-panel-close {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--meridian-close-btn-bg);
   border: 1px solid var(--meridian-panel-border);
   color: var(--meridian-panel-sub);
   font-size: 28px;
@@ -177,7 +139,7 @@
 }
 
 .meridian-panel-close:active {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--meridian-close-btn-hover-bg);
   color: var(--meridian-panel-text);
 }
 
@@ -206,7 +168,7 @@
   font-size: 26px;
   color: var(--meridian-panel-text);
   line-height: 1.7;
-  background: rgba(56, 139, 253, 0.06);
+  background: var(--meridian-pathway-bg);
   padding: 16px 20px;
   border-radius: 12px;
   border-left: 4px solid var(--meridian-panel-title);
@@ -220,8 +182,8 @@
 
 .meridian-panel-acupoint-tag {
   padding: 8px 18px;
-  background: rgba(255, 215, 0, 0.08);
-  border: 1px solid rgba(255, 215, 0, 0.20);
+  background: var(--meridian-acupoint-tag-bg);
+  border: 1px solid var(--meridian-acupoint-tag-border);
   border-radius: 20px;
   color: var(--meridian-panel-accent);
   font-size: 24px;
@@ -272,7 +234,7 @@
   left: 50%;
   transform: translateX(-50%);
   padding: 12px 32px;
-  background: rgba(22, 27, 34, 0.80);
+  background: var(--meridian-hint-bg);
   border: 1px solid var(--meridian-btn-border);
   border-radius: 24px;
   color: var(--meridian-panel-sub);

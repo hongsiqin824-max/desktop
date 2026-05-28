@@ -27,6 +27,12 @@ export default defineConfig(({ mode }) => {
           target: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/llm-proxy/, ''),
+          configure: (proxy) => {
+            const apiKey = env.VITE_LLM_API_KEY
+            proxy.on('proxyReq', (proxyReq) => {
+              if (apiKey) proxyReq.setHeader('Authorization', `Bearer ${apiKey}`)
+            })
+          },
         },
         '/tts-proxy': {
           target: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',

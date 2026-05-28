@@ -8,7 +8,7 @@ import VirtualKeyboard from '@/components/business/keyboard/VirtualKeyboard.vue'
 import { useTTS } from '@/composables/useTTS'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { callLLM } from '@/api/llm'
-import { buildUserInfoParseMessages, parseUserInfoResult, extractPhoneLocally } from '@/api/llm/prompt'
+import { buildUserInfoParseMessages, parseUserInfoResult, extractPhoneLocally } from '@/data/llmPrompt'
 import './styles/PersonalInfoFormView.css'
 
 const router = useRouter()

@@ -257,10 +257,11 @@ export function useSpeechRecognition() {
   // ── 建立 WebSocket 连接（可重试）──
   const connectWs = (): void => {
     const url = buildWsUrl()
-    ws = new WebSocket(url)
+    const localWs = new WebSocket(url)
+    ws = localWs
 
-    ws.onopen = () => {
-      ws!.send(JSON.stringify({
+    localWs.onopen = () => {
+      localWs.send(JSON.stringify({
         type: 'session.update',
         session: {
           modalities: ['text'],
@@ -274,7 +275,7 @@ export function useSpeechRecognition() {
       }))
     }
 
-    ws.onmessage = (ev) => {
+    localWs.onmessage = (ev) => {
       if (typeof ev.data !== 'string') return
       try {
         const event = JSON.parse(ev.data)
@@ -319,13 +320,13 @@ export function useSpeechRecognition() {
       } catch { /* 忽略 JSON 解析异常 */ }
     }
 
-    ws.onerror = () => {
+    localWs.onerror = () => {
       // 不在 onerror 中直接处理错误，因为 onerror 后总会触发 onclose
       // 真正的错误处理在 onclose（限流重试）和 onmessage（服务端 error 事件）中
       console.error('[ASR] WebSocket error (will be handled by onclose)')
     }
 
-    ws.onclose = (ev: CloseEvent) => {
+    localWs.onclose = (ev: CloseEvent) => {
       // 服务端限流（1011）：保留音频管线，等旧连接确认关闭后延迟重连
       if (ev.code === 1011 && ev.reason?.includes('Too many requests') && retryCount < RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[retryCount]!
@@ -333,7 +334,7 @@ export function useSpeechRecognition() {
         console.warn(`[ASR] 服务端限流，等旧连接关闭后 ${delay / 1000}s 重试 (${retryCount}/${RETRY_DELAYS.length})`)
 
         // 保存旧 WS 引用（releaseWsOnly 会置空 ws）
-        const oldWs = ws
+        const oldWs = localWs
         releaseWsOnly()
 
         // 等旧连接确认关闭后再开始倒计时重连

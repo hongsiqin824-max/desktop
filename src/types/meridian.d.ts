@@ -61,18 +61,3 @@ export interface IMeridianHitEvent {
   /** 如果点击穴位，穴位名称 */
   acupointName?: string
 }
-
-// ── 视角预设类型 ──────────────────────────────────────────────
-export type ViewAngleType = 'front' | 'back' | 'left' | 'right'
-
-// ── 视角定义接口 ──────────────────────────────────────────────
-export interface IViewAngleDef {
-  /** 视角标识 */
-  key: ViewAngleType
-  /** 视角中文名称 */
-  label: string
-  /** 相机位置 */
-  cameraPosition: Point3D
-  /** 相机看向目标 */
-  lookAt: Point3D
-}

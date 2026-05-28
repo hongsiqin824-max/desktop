@@ -26,9 +26,11 @@
 
 ### 2.3 类型定义规范
 - **类型文件位置**：所有类型定义统一放在 `src/types` 目录，按业务域命名，示例：账单相关类型 → `src/types/billing.d.ts`。
+  - **例外**：composable 内部使用的接口（入参/返回值类型定义），允许定义在 composable 文件中，无需迁移至 `src/types/` 目录。
 - **类型命名规则**：
   - 接口命名前缀为 `I` + 业务语义，示例：账单列表接口 → `interface IBillingList`。
   - 类型别名使用 `[语义] + Type`，示例：账单金额类型 → `type BillingAmountType = number | string`。
+    - **例外**：数学/几何领域的通用类型命名（如 `Point3D`、`Vector3D` 等）遵循业界惯例，可不加 `Type` 后缀。
   - 全局通用类型：放在 `src/types/global.d.ts`，示例：分页参数类型 → `interface IPagination`。
 
 ### 2.4 API 接口规范
@@ -56,6 +58,9 @@
 - **新增颜色规则**：
   - 禁止直接新增 `--brown-4` / `--red-4` 等无意义序号，需先确认色阶语义。
   - 新增颜色需在 `variables.css` 中按 “基础层 → 主题层 → 组件层” 依次补充，禁止在组件内直接写死色值。
+  - **例外**：以下场景不受硬编码色值规则约束：
+    - 数据定义文件中的颜色属性值（如经脉配色、图表颜色等业务数据）
+    - 集中管理的 JS 颜色常量文件（如 `src/data/meridianColors.ts`）
 
 ### 3.2 样式文件规范
 - **样式文件位置**：

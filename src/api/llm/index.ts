@@ -12,17 +12,10 @@ export async function callLLM(
   const baseUrl = options?.baseUrl
     || import.meta.env.VITE_LLM_BASE_URL
     || DEFAULT_BASE_URL
-  const apiKey = options?.apiKey
-    || import.meta.env.VITE_LLM_API_KEY
-    || ''
 
   const model = options?.model
     || import.meta.env.VITE_LLM_MODEL
     || DEFAULT_MODEL
-
-  if (!apiKey) {
-    throw new Error('LLM API Key 未配置，请在 .env.local 中设置 VITE_LLM_API_KEY')
-  }
 
   const url = `${baseUrl}/chat/completions`
 
@@ -30,7 +23,6 @@ export async function callLLM(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model,
@@ -39,6 +31,7 @@ export async function callLLM(
       max_tokens: options?.maxTokens ?? 256,
       enable_thinking: options?.enableThinking ?? false,
     }),
+    signal: options?.signal,
   })
 
   if (!res.ok) {

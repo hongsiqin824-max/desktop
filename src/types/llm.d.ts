@@ -40,8 +40,6 @@ export interface IOptionMatchResult {
 export interface ILlmCallOptions {
   /** API 基础地址 */
   baseUrl?: string
-  /** API 密钥 */
-  apiKey?: string
   /** 模型名称 */
   model?: string
   /** 温度参数 */
@@ -50,6 +48,8 @@ export interface ILlmCallOptions {
   maxTokens?: number
   /** 是否启用思考模式（Qwen3.7 系列默认开启，设为 false 可加速响应） */
   enableThinking?: boolean
+  /** AbortSignal 用于取消请求 */
+  signal?: AbortSignal
 }
 
 /** LLM 用户信息提取结果 */

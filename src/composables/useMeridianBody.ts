@@ -4,8 +4,8 @@
 import { ref, shallowRef, watch, type Ref } from 'vue'
 import { useGLTF } from '@tresjs/cientos'
 import * as THREE from 'three'
-import type { MeridianCodeType, IMeridianDef, IMeridianHitEvent, ViewAngleType, Point3D } from '@/types/meridian'
-import { MERIDIAN_DATA, VIEW_ANGLES } from '@/data/meridianData'
+import type { MeridianCodeType, IMeridianDef, IMeridianHitEvent, Point3D } from '@/types/meridian'
+import { MERIDIAN_DATA } from '@/data/meridianData'
 
 export interface IUseMeridianBodyOptions {
   /** 已记录的经脉编号集合 */
@@ -27,8 +27,6 @@ export interface IUseMeridianBodyReturn {
   onMeridianHover: (code: MeridianCodeType | null) => void
   /** 清除当前选中经脉 */
   clearActive: () => void
-  /** 动画切换到预设视角 */
-  animateToView: (view: ViewAngleType) => { position: THREE.Vector3; lookAt: THREE.Vector3 }
   /** 根据经脉数据获取经脉定义 */
   getMeridianDef: (code: MeridianCodeType) => IMeridianDef | undefined
   /** 查找距离给定3D坐标最近的经脉 */
@@ -128,8 +126,6 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
       modelOffsetY = scene.position.y
       modelOffsetZ = scene.position.z
 
-      console.log('[MeridianBody] Model normalized:', { originalHeight: size.y.toFixed(3), scaleFactor: scaleFactor.toFixed(3), finalBox: new THREE.Box3().setFromObject(scene) })
-
       bodyModel.value = scene
       modelLoaded.value = true
     } catch (error) {
@@ -152,16 +148,6 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
 
   const clearActive = () => {
     activeMeridian.value = null
-  }
-
-  // ── 相机视角切换 ────────────────────────────────────────────
-  const animateToView = (view: ViewAngleType) => {
-    const viewDef = VIEW_ANGLES.find(v => v.key === view)
-    if (!viewDef) return { position: new THREE.Vector3(0, 1, 2.8), lookAt: new THREE.Vector3(0, 0.9, 0) }
-    return {
-      position: new THREE.Vector3(...viewDef.cameraPosition),
-      lookAt: new THREE.Vector3(...viewDef.lookAt),
-    }
   }
 
   // ── 查找最近经脉（用于模式C的空白区域点击） ────────────────
@@ -231,7 +217,6 @@ export function useMeridianBody(options: IUseMeridianBodyOptions): IUseMeridianB
     onMeridianClick,
     onMeridianHover,
     clearActive,
-    animateToView,
     getMeridianDef,
     findNearestMeridian,
   }

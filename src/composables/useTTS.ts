@@ -46,6 +46,8 @@ export function useTTS() {
   let twCharIndex = 0
   let _onChar: ((char: string) => void) | null = null
   let _twText = ''
+  /** 当前语句播放倍速（speakSync 入口锁定，整句不可变） */
+  let currentSpeed: number = 1
 
   // ── 清理所有资源 ──
   const clearSafetyTimer = () => {
@@ -57,11 +59,11 @@ export function useTTS() {
     clearSafetyTimer()
     if (ws) {
       ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null
-      try { ws.close() } catch { /* ignore */ }
+      try { ws.close() } catch { /* 忽略异常 */ }
       ws = null
     }
     if (audioContext) {
-      try { audioContext.close() } catch { /* ignore */ }
+      try { audioContext.close() } catch { /* 忽略异常 */ }
       audioContext = null
     }
     pcmBuffer = []
@@ -73,6 +75,7 @@ export function useTTS() {
     twCharIndex = 0
     _onChar = null
     _twText = ''
+    currentSpeed = 1
   }
 
   // ── 强制输出打字机剩余文字 ──
@@ -86,14 +89,14 @@ export function useTTS() {
   }
 
   // ── 启动打字机动画 ──
-  const startTypewriter = (text: string, onChar: (char: string) => void) => {
+  const startTypewriter = (text: string, onChar: (char: string) => void, speed: number) => {
     if (typewriterStarted) return
     typewriterStarted = true
     _twText = text
     _onChar = onChar
     twCharIndex = 0
 
-    const charsPerSec = 3.4
+    const charsPerSec = 3.4 * speed
     const charDelay = 1000 / charsPerSec
     // 不发音字符立即输出，不占用打字时间，确保与语音同步
     const isNonSpoken = (ch: string) => /[\n\s【】→、。，：；]/.test(ch)
@@ -119,7 +122,6 @@ export function useTTS() {
   // ── 将累积的 PCM 缓冲区调度到 AudioContext 播放 ──
   const schedulePcmBuffer = () => {
     if (!audioContext || pcmBufferLen === 0) {
-      console.log('[TTS] schedulePcmBuffer: 跳过, audioContext=', !!audioContext, 'pcmBufferLen=', pcmBufferLen)
       return
     }
 
@@ -133,7 +135,7 @@ export function useTTS() {
     pcmBuffer = []
     pcmBufferLen = 0
 
-    // PCM16 → Float32
+    // PCM16转浮点
     const float32 = new Float32Array(totalSamples)
     for (let i = 0; i < totalSamples; i++) {
       float32[i] = (merged[i] ?? 0) / 32768
@@ -144,6 +146,7 @@ export function useTTS() {
 
     const source = audioContext.createBufferSource()
     source.buffer = audioBuffer
+    source.playbackRate.value = currentSpeed
     source.connect(audioContext.destination)
 
     const now = audioContext.currentTime
@@ -152,10 +155,8 @@ export function useTTS() {
     }
 
     source.start(nextPlayTime)
-    nextPlayTime += audioBuffer.duration
+    nextPlayTime += audioBuffer.duration / currentSpeed
     lastSourceEndTime = nextPlayTime
-
-    console.log(`[TTS] schedulePcmBuffer: 调度音频, samples=${totalSamples}, duration=${audioBuffer.duration.toFixed(3)}s, startTime=${(nextPlayTime - audioBuffer.duration).toFixed(3)}, endTime=${lastSourceEndTime.toFixed(3)}, ctxTime=${now.toFixed(3)}`)
   }
 
   // ── 处理单个 PCM 帧（解码 + 累积 + 达标后调度）──
@@ -189,8 +190,9 @@ export function useTTS() {
     text: string,
     persona: PersonaType,
     onChar: (char: string) => void,
+    speed: number,
     doResolve: () => void,
-  ): void => {
+  ): Promise<void> => {
     let resolved = false
     const localResolve = () => {
       if (resolved) return
@@ -202,11 +204,13 @@ export function useTTS() {
     }
 
     isSpeaking.value = true
+    // 音频倍速：最高 1.25x，超过时音频保持原速（避免音调变形）
+    currentSpeed = Math.min(speed, 1.25)
 
-    // 安全超时兜底（TTS 合成时间 + 音频播放时间 + 30s 余量）
+    // 安全超时兜底（TTS 合成时间 + 音频播放时间 + 30s 余量，按倍速缩短）
     const charsPerSec = PERSONA_CHARS_PER_SEC[persona]
-    const estimatedMs = (text.length / charsPerSec) * 1000 + 30000
-    safetyTimer = setTimeout(localResolve, Math.max(estimatedMs, 30000))
+    const estimatedMs = ((text.length / charsPerSec) * 1000 + 30000) / speed
+    safetyTimer = setTimeout(localResolve, Math.max(estimatedMs, 20000))
 
     // 创建 AudioContext（WS 连接期间初始化，减少首帧延迟）
     try {
@@ -269,27 +273,22 @@ export function useTTS() {
             // 首个音频帧：启动打字机
             if (!firstAudioReceived) {
               firstAudioReceived = true
-              console.log('[TTS] 首个音频帧到达，AudioContext state:', audioContext?.state)
-              startTypewriter(text, onChar)
+              startTypewriter(text, onChar, speed)
             }
             // 解码并调度 PCM 帧
             const delta = event.delta ?? event.audio ?? event.data
             if (delta) {
-              const beforeLen = pcmBufferLen
               handleAudioDelta(delta)
-              console.log(`[TTS] 音频帧: base64长度=${delta.length}, 缓冲前=${beforeLen}, 缓冲后=${pcmBufferLen}`)
             }
             break
           }
 
           case 'response.audio.done':
             // 音频生成完毕，刷出残余 PCM 缓冲，但不 resolve（等 response.done）
-            console.log('[TTS] response.audio.done')
             if (pcmBufferLen > 0) schedulePcmBuffer()
             break
 
           case 'response.done': {
-            console.log('[TTS] response.done, lastSourceEndTime=', lastSourceEndTime.toFixed(3), 'ctxTime=', audioContext?.currentTime.toFixed(3))
             // 刷出任何残留缓冲
             if (pcmBufferLen > 0) schedulePcmBuffer()
 
@@ -299,11 +298,9 @@ export function useTTS() {
                 0,
                 (lastSourceEndTime - audioContext.currentTime) * 1000 + 300,
               )
-              console.log('[TTS] 等待音频播放完毕, remainingMs=', remainingMs.toFixed(0))
               setTimeout(localResolve, remainingMs)
             } else {
               // 未收到任何音频 → 直接 resolve（降级为纯文字）
-              console.log('[TTS] 未收到音频或播放时间未知, 直接 resolve')
               localResolve()
             }
             break
@@ -335,10 +332,12 @@ export function useTTS() {
   }
 
   // ── 对外接口：同步语音朗读（返回 Promise，resolve 时朗读+打字机均完成）──
+  // speed 在此入口锁定，整句播放期间不可变，下一句调用时可传新值
   const speakSync = (
     text: string,
     persona: PersonaType,
     onChar: (char: string) => void,
+    speed: number = 1,
   ): Promise<void> => {
     return new Promise<void>((resolve) => {
       let resolved = false
@@ -347,7 +346,7 @@ export function useTTS() {
         resolved = true
         resolve()
       }
-      speakCloud(text, persona, onChar, doResolve)
+      speakCloud(text, persona, onChar, speed, doResolve)
     })
   }
 

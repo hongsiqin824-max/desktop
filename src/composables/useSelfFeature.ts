@@ -16,10 +16,11 @@ export interface ISelfFeatureContext {
   goToStep: (stepId: StepIdType, symptom?: string) => Promise<void>
   doctorSay: (text: string, delay?: number) => Promise<void>
   scrollToBottom: () => Promise<void>
+  confirmLastUserMessage: () => void
 }
 
 export function useSelfFeature(ctx: ISelfFeatureContext) {
-  const { userInfo, messages, goToStep, doctorSay, scrollToBottom } = ctx
+  const { userInfo, messages, goToStep, doctorSay, scrollToBottom, confirmLastUserMessage } = ctx
 
   const selfFeatureSubStep = ref<SelfFeatureSubStepType>('meridian')
   const selfFeatureRecords = ref<ISelfFeatureRecord[]>([])
@@ -74,7 +75,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       return {
         id: stepId,
         doctorText: count > 0
-          ? `好的，已记录。请点击下一个不适的经脉或身体部位。`
+          ? `请点击下一个不适的经脉或身体部位。`
           : '请问您身体其他部位是否有不适的感觉？请直接在人体模型上点击不适的经脉或部位。',
         options: [doneOption],
         isFreeInput: true,
@@ -87,7 +88,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       if (count > 0) doneOption.label = '没有了，就这些'
       return {
         id: stepId,
-        doctorText: count > 0 ? `好的，已记录。接下来请问第${count + 1}个不适在什么位置？` : '请问您身体其他部位是否有不适的感觉？如果有的话，请先告诉我在什么位置。',
+        doctorText: count > 0 ? `接下来请问第${count + 1}个不适在什么位置？` : '请问您身体其他部位是否有不适的感觉？如果有的话，请先告诉我在什么位置。',
         options: [...filteredLocations.value.map(l => ({ label: l.label, nextStep: stepId, payload: undefined, semanticDesc: l.semanticDesc })), doneOption],
         isFreeInput: true,
         isEnd: false,
@@ -133,7 +134,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       const maxReached = count >= SELF_FEATURE_MAX_COUNT
       return {
         id: stepId,
-        doctorText: maxReached ? `您已经描述了${count}个部位的不适，已达到上限。接下来我们确认一下这些信息。` : `好的，已记录${selfFeatureCurrentLocation.value}的${selfFeatureCurrentSymptom.value}。您还有其他部位的不适吗？（已记录${count}/${SELF_FEATURE_MAX_COUNT}个）`,
+        doctorText: maxReached ? `您已经描述了${count}个部位的不适，已达到上限。接下来我们确认一下这些信息。` : `${selfFeatureCurrentLocation.value}的${selfFeatureCurrentSymptom.value}，您还有其他部位的不适吗？（已记录${count}/${SELF_FEATURE_MAX_COUNT}个）`,
         options: maxReached ? [{ label: '确认提交', nextStep: 'self_feature_summary' as StepIdType, payload: undefined }] : [{ label: '继续添加', nextStep: stepId, payload: undefined }, { label: '没有了，就这些', nextStep: 'self_feature_summary' as StepIdType, payload: undefined }],
         isFreeInput: true,
         isEnd: false,
@@ -204,7 +205,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       }
       selfFeatureSubStep.value = 'nature'
       selfFeatureExpandKey.value = ''
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       await doctorSay(buildSelfFeatureStep().doctorText)
       return true
     }
@@ -219,7 +220,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       }
       applySymptomData(label)
       selfFeatureSubStep.value = 'severity'
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       await doctorSay(buildSelfFeatureStep().doctorText)
       return true
     }
@@ -234,7 +235,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       }
       applySymptomData(label)
       selfFeatureSubStep.value = 'severity'
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       await doctorSay(buildSelfFeatureStep().doctorText)
       return true
     }
@@ -243,7 +244,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       const severityOption = SELF_FEATURE_SEVERITY_OPTIONS.find(s => s.label === label)
       pushRecord((severityOption?.value ?? 1) as 1 | 2)
       selfFeatureSubStep.value = 'continue'
-      await doctorSay(generateResponse('O_VALID'), 300)
+      confirmLastUserMessage()
       await doctorSay(buildSelfFeatureStep().doctorText)
       return true
     }
@@ -373,7 +374,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
         selfFeatureCurrentSymptomBaseCode.value = symptom.baseCode
         selfFeatureCurrentSymptomFixedTaCode.value = symptom.fixedTaCode
         selfFeatureSubStep.value = 'severity'
-        await doctorSay(generateResponse('O_VALID'), 300)
+        confirmLastUserMessage()
         await doctorSay(buildSelfFeatureStep().doctorText)
         return true
       }
@@ -385,14 +386,14 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       if (text.includes('轻') || text.includes('一点') || text.includes('轻微')) {
         pushRecord(1)
         selfFeatureSubStep.value = 'continue'
-        await doctorSay(generateResponse('O_VALID'), 300)
+        confirmLastUserMessage()
         await doctorSay(buildSelfFeatureStep().doctorText)
         return true
       }
       if (text.includes('重') || text.includes('严重') || text.includes('厉害')) {
         pushRecord(2)
         selfFeatureSubStep.value = 'continue'
-        await doctorSay(generateResponse('O_VALID'), 300)
+        confirmLastUserMessage()
         await doctorSay(buildSelfFeatureStep().doctorText)
         return true
       }
@@ -473,7 +474,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
     // 在对话中显示用户的选择
     messages.value.push({ role: 'user', text: def.shortName })
     await scrollToBottom()
-    await doctorSay(generateResponse('O_VALID'), 300)
+    confirmLastUserMessage()
     await doctorSay(`这是${def.name}，${def.description}请问这个位置是什么感觉？可以直接说出来，或者从选项中选择。`)
   }
 

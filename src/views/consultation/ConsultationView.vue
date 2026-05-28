@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useUserStore } from '@/stores/global/user'
+import { useUIStore } from '@/stores/global/ui'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { useTTS } from '@/composables/useTTS'
 import type { PersonaType } from '@/composables/useTTS'
@@ -19,8 +20,15 @@ import './styles/ConsultationView.css'
 
 // ── 用户信息 ─────────────────────────────────────────────────
 const userStore = useUserStore()
+const uiStore = useUIStore()
 const userName = computed(() => userStore.userInfo.name || '朋友')
 const userInfo = computed(() => userStore.userInfo)
+
+/** 倍速切换：1 → 1.25 → 1.5 → 1 循环 */
+const cycleSpeed = () => {
+  const next = uiStore.playbackSpeed === 1 ? 1.25 : uiStore.playbackSpeed === 1.25 ? 1.5 : 1
+  uiStore.setPlaybackSpeed(next as 1 | 1.25 | 1.5)
+}
 
 // ── 对话记录 ─────────────────────────────────────────────────
 const messages = ref<IChatMessage[]>([])
@@ -53,7 +61,7 @@ const clarificationCandidates = ref<string[]>([])
 
 // ── TTS / LLM / 语音识别 ────────────────────────────────────
 const { isSpeaking: ttsIsSpeaking, speakSync: ttsSpeakSync, stop: ttsStop } = useTTS()
-const { isLoading: llmIsLoading, recognizeIntent, classifyOption } = useLLM()
+const { isLoading: llmIsLoading, recognizeIntent, classifyOption, abort: abortLLM } = useLLM()
 const { status: speechStatus, errorMessage: speechError, transcript: speechTranscript, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
 const showVoiceToast = ref(false)
 const showErrorToast = ref(false)
@@ -97,7 +105,19 @@ const scrollToBottom = async () => {
   }
 }
 
+/** 在最新一条用户消息右下角标记 ✓（零耗时视觉反馈，替代 O_VALID 语音确认） */
+const confirmLastUserMessage = () => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i]!.role === 'user') {
+      messages.value[i]!.confirmed = true
+      break
+    }
+  }
+}
+
 const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') => {
+  // 锁定当前句倍速（中途切换不影响本句，下一句生效）
+  const speed = uiStore.playbackSpeed
   return new Promise<void>((resolve) => {
     isTyping.value = true
     let msgIdx = -1
@@ -110,7 +130,7 @@ const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') =
         }
         messages.value[msgIdx]!.text += char
         scrollToBottom()
-      })
+      }, speed)
       if (msgIdx === -1) {
         messages.value.push({ role: persona, text })
       } else {
@@ -119,7 +139,7 @@ const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') =
       isTyping.value = false
       await scrollToBottom()
       resolve()
-    }, delay)
+    }, delay / speed)
   })
 }
 
@@ -127,6 +147,7 @@ const clearTimers = () => {
   if (autoAdvanceTimerId.value) { clearTimeout(autoAdvanceTimerId.value); autoAdvanceTimerId.value = null }
   if (captureStartTimerId.value) { clearTimeout(captureStartTimerId.value); captureStartTimerId.value = null }
   if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
+  abortLLM()
   ttsStop()
   isCapturing.value = false
   captureType.value = null
@@ -138,13 +159,13 @@ const clearTimers = () => {
 const detail = useDetailQuestion({
   currentSymptom, messages, detailIsFirstQuestion, detailBranch, detailQuestionQueue,
   goToStep: (stepId, symptom?) => goToStep(stepId, symptom),
-  doctorSay, scrollToBottom,
+  doctorSay, scrollToBottom, confirmLastUserMessage,
 })
 
 const selfFeature = useSelfFeature({
   userInfo, messages,
   goToStep: (stepId, symptom?) => goToStep(stepId, symptom),
-  doctorSay, scrollToBottom,
+  doctorSay, scrollToBottom, confirmLastUserMessage,
 })
 
 // ── 步骤计算 ─────────────────────────────────────────────────
@@ -268,7 +289,7 @@ const saveSnapshot = () => {
     detailQuestionQueue: [...detailQuestionQueue.value], detailAskedCategories: [...detail.detailAskedCategories.value],
     detailAnswers: [...detail.detailAnswers.value], detailIsFirstQuestion: detailIsFirstQuestion.value,
     detailSeverityPending: detail.detailSeverityPending.value ? { ...detail.detailSeverityPending.value } : null,
-    detailFailCount: detail.detailFailCount.value, invalidRetryCount: invalidRetryCount.value,
+    detailFailCount: detail.detailFailCount.value, genderQuestionsInjected: detail.genderQuestionsInjected.value, invalidRetryCount: invalidRetryCount.value,
     selfFeatureSubStep: selfFeature.selfFeatureSubStep.value, selfFeatureRecords: [...selfFeature.selfFeatureRecords.value],
     selfFeatureCurrentLocation: selfFeature.selfFeatureCurrentLocation.value,
     selfFeatureCurrentLocationZone: selfFeature.selfFeatureCurrentLocationZone.value,
@@ -297,6 +318,7 @@ const reselectCurrentAnswer = async () => {
   detailIsFirstQuestion.value = snap.detailIsFirstQuestion
   detail.detailSeverityPending.value = snap.detailSeverityPending
   detail.detailFailCount.value = snap.detailFailCount
+  detail.genderQuestionsInjected.value = snap.genderQuestionsInjected
   invalidRetryCount.value = snap.invalidRetryCount
   selfFeature.selfFeatureSubStep.value = snap.selfFeatureSubStep
   selfFeature.selfFeatureRecords.value = [...snap.selfFeatureRecords]
@@ -327,6 +349,8 @@ const CAPTURE_SUCCESS_DELAY = 800
 // ── 处理流程跳转 ─────────────────────────────────────────────
 const goToStep = async (stepId: StepIdType, symptom?: string) => {
   clearTimers()
+  // 锁定当前步骤倍速
+  const speed = uiStore.playbackSpeed
   if (symptom) currentSymptom.value = symptom
 
   if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value) && (stepId === 'severity' || stepId === 'detail_transition' || stepId === 'detail_question')) {
@@ -396,19 +420,19 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     captureStartTimerId.value = window.setTimeout(() => {
       isCapturing.value = true; captureType.value = step.captureType!
       captureProgress.value = 0; captureCompleted.value = false
-      const stepMs = 50; const progressStep = 100 / (captureDuration / stepMs)
+      const stepMs = 50; const progressStep = 100 / (captureDuration / stepMs) * speed
       captureProgressIntervalId.value = window.setInterval(() => {
         captureProgress.value += progressStep
         if (captureProgress.value >= 100) {
           captureProgress.value = 100; captureCompleted.value = true
           if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
         }
-      }, stepMs)
-    }, CAPTURE_READING_DELAY)
+      }, stepMs / speed)
+    }, CAPTURE_READING_DELAY / speed)
   }
 
   if (step.autoAdvance) {
-    autoAdvanceTimerId.value = window.setTimeout(() => { clearTimers(); goToStep(step.autoAdvance!.nextStep) }, step.autoAdvance.delay)
+    autoAdvanceTimerId.value = window.setTimeout(() => { clearTimers(); goToStep(step.autoAdvance!.nextStep) }, step.autoAdvance.delay / speed)
   }
 }
 
@@ -697,7 +721,7 @@ onMounted(async () => {
   await doctorSay(`${userName.value}您好，我是您的中医师 🌿 接下来我会帮您了解一下身体状况，请放松心情～`, 800)
   await goToStep('initial')
 })
-onUnmounted(() => { ttsStop() })
+onUnmounted(() => { clearTimers(); stopSpeech() })
 </script>
 
 <template>
@@ -722,6 +746,15 @@ onUnmounted(() => { ttsStop() })
         <div class="doctor-badge-dot"></div>
         <div class="doctor-badge-name">{{ isSelfFeaturePhase ? '点击经脉查看信息' : '中医师 · 在线问诊' }}</div>
       </div>
+      <!-- 倍速切换按钮：1x → 1.25x → 1.5x → 1x 循环 -->
+      <button
+        class="speed-toggle-btn"
+        :class="`speed-${uiStore.playbackSpeed}`"
+        :title="`当前 ${uiStore.playbackSpeed}x，点击切换倍速`"
+        @click="cycleSpeed"
+      >
+        {{ uiStore.playbackSpeed }}x
+      </button>
     </div>
 
     <!-- 问诊进度条 -->
@@ -755,6 +788,7 @@ onUnmounted(() => { ttsStop() })
           msg.type === 'syndrome' ? 'chat-bubble-syndrome' : ''
         ]">
           {{ msg.text }}
+          <span v-if="msg.confirmed" class="msg-confirmed-badge">✓</span>
         </div>
       </div>
 

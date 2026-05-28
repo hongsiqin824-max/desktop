@@ -138,6 +138,8 @@ export interface IChatMessage {
   role: 'doctor' | 'nurse' | 'user'
   text: string
   type?: 'text' | 'analysis' | 'capture_success' | 'summary' | 'syndrome'
+  /** 用户消息右下角已记录对勾标记 */
+  confirmed?: boolean
 }
 
 // ── 自选特征类型 ──────────────────────────────────────────────
@@ -224,6 +226,7 @@ export interface IStepSnapshot {
   detailIsFirstQuestion: boolean
   detailSeverityPending: IDetailSeverityPending | null
   detailFailCount: number
+  genderQuestionsInjected: boolean
   invalidRetryCount: number
   selfFeatureSubStep: SelfFeatureSubStepType
   selfFeatureRecords: ISelfFeatureRecord[]

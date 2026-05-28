@@ -7,10 +7,16 @@ import { OrbitControls } from '@tresjs/cientos'
 import * as THREE from 'three'
 import type { MeridianCodeType, Point3D, IMeridianDef } from '@/types/meridian'
 import { MERIDIAN_DATA } from '@/data/meridianData'
+import {
+  MERIDIAN_DEFAULT_COLOR, MERIDIAN_ACTIVE_COLOR, MERIDIAN_HOVER_COLOR,
+  MERIDIAN_RECORDED_COLOR, ACUPOINT_DEFAULT_COLOR,
+  SCENE_CLEAR_COLOR, SCENE_AMBIENT_LIGHT_COLOR, SCENE_DIRECTIONAL_LIGHT_COLOR,
+  SCENE_POINT_LIGHT_COLOR,
+} from '@/data/meridianColors'
 import { useMeridianBody } from '@/composables/useMeridianBody'
 import MeridianInfoPanel from './MeridianInfoPanel.vue'
 import RecordedMeridians from './RecordedMeridians.vue'
-import './styles/meridian.css'
+import './meridian.css'
 
 // ── 组件属性 ─────────────────────────────────────────────────
 const props = defineProps<{
@@ -88,7 +94,7 @@ const meridianTubes = allMeridianData.map(m => {
   )
   const def = MERIDIAN_DATA.find(d => d.code === m.code)
   const tubeGeo = new THREE.TubeGeometry(curve, meridianTubeSegments, meridianTubeRadius, meridianRadialSegments, false)
-  return { code: m.code, side: m.side, geometry: tubeGeo, color: def?.color ?? '#64C8FF' }
+  return { code: m.code, side: m.side, geometry: tubeGeo, color: def?.color ?? MERIDIAN_DEFAULT_COLOR }
 })
 
 // ── 收集 Three.js 对象引用（用于命令式更新材质）──────────────
@@ -160,22 +166,22 @@ const updateMaterials = () => {
     const code = meshKey.split('-')[0] as MeridianCodeType
 
     const def = MERIDIAN_DATA.find(d => d.code === code)
-    const baseColor = def?.color ?? '#64C8FF'
+    const baseColor = def?.color ?? MERIDIAN_DEFAULT_COLOR
     let color = baseColor
     let emissive = baseColor
     let opacity = 0.7
 
     if (active === code) {
-      color = '#FF6B35'
-      emissive = '#FF6B35'
+      color = MERIDIAN_ACTIVE_COLOR
+      emissive = MERIDIAN_ACTIVE_COLOR
       opacity = 1.0
     } else if (hovered === code) {
-      color = '#FFD700'
-      emissive = '#FFD700'
+      color = MERIDIAN_HOVER_COLOR
+      emissive = MERIDIAN_HOVER_COLOR
       opacity = 1.0
     } else if (recorded.has(code)) {
-      color = '#00E676'
-      emissive = '#00E676'
+      color = MERIDIAN_RECORDED_COLOR
+      emissive = MERIDIAN_RECORDED_COLOR
       opacity = 1.0
     } else if (active && active !== code) {
       opacity = 0.2
@@ -195,8 +201,8 @@ const updateMaterials = () => {
     const code = mesh.userData?.meridianCode as MeridianCodeType
     const isActive = active === code
 
-    material.color.set(isActive ? '#FF6B35' : '#FFD700')
-    material.emissive.set(isActive ? '#FF6B35' : '#FFD700')
+    material.color.set(isActive ? MERIDIAN_ACTIVE_COLOR : ACUPOINT_DEFAULT_COLOR)
+    material.emissive.set(isActive ? MERIDIAN_ACTIVE_COLOR : ACUPOINT_DEFAULT_COLOR)
     material.needsUpdate = true
   })
 }
@@ -296,7 +302,7 @@ onUnmounted(() => {
     <TresCanvas
       v-if="meridian.modelLoaded.value"
       class="meridian-canvas"
-      clear-color="#0D1117"
+      :clear-color="SCENE_CLEAR_COLOR"
       :alpha="false"
       :antialias="true"
       :tone-mapping="THREE.ACESFilmicToneMapping"
@@ -314,6 +320,7 @@ onUnmounted(() => {
       <!-- 轨道控制器（自由旋转/缩放） -->
       <OrbitControls
         ref="controlsRef"
+        :target="[0, 0.9, 0]"
         :enable-pan="false"
         :min-distance="1.5"
         :max-distance="5.0"
@@ -324,10 +331,10 @@ onUnmounted(() => {
       />
 
       <!-- 灯光系统 -->
-      <TresAmbientLight :intensity="0.6" color="#4488FF" />
-      <TresDirectionalLight :position="[5, 8, 5]" :intensity="0.8" color="#FFFFFF" />
-      <TresDirectionalLight :position="[-3, 5, -5]" :intensity="0.4" color="#4488FF" />
-      <TresPointLight :position="[0, 2, 2]" :intensity="0.3" color="#FFD700" :distance="8" />
+      <TresAmbientLight :intensity="0.6" :color="SCENE_AMBIENT_LIGHT_COLOR" />
+      <TresDirectionalLight :position="[5, 8, 5]" :intensity="0.8" :color="SCENE_DIRECTIONAL_LIGHT_COLOR" />
+      <TresDirectionalLight :position="[-3, 5, -5]" :intensity="0.4" :color="SCENE_AMBIENT_LIGHT_COLOR" />
+      <TresPointLight :position="[0, 2, 2]" :intensity="0.3" :color="SCENE_POINT_LIGHT_COLOR" :distance="8" />
 
       <!-- 人体模型 -->
       <primitive
@@ -374,8 +381,8 @@ onUnmounted(() => {
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
           <TresMeshPhysicalMaterial
-            :color="'#FFD700'"
-            :emissive="'#FFD700'"
+            :color="ACUPOINT_DEFAULT_COLOR"
+            :emissive="ACUPOINT_DEFAULT_COLOR"
             :emissive-intensity="0.8"
             :transparent="true"
             :opacity="0.9"
