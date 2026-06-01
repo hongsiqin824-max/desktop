@@ -331,6 +331,60 @@
   transform: scale(0.95);
 }
 
+/* 返回首页按钮：问诊结束时显示 */
+.go-home-btn {
+  height: 80px;
+  padding: 0 48px;
+  border-radius: 40px;
+  background: var(--theme-primary);
+  border: none;
+  font-size: 32px;
+  color: var(--color-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+  box-shadow: var(--shadow-button);
+}
+
+.go-home-btn:hover {
+  background: var(--theme-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-button-hover);
+}
+
+.go-home-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 跳过按钮：医生说话时显示 */
+.skip-btn {
+  height: 72px;
+  padding: 0 40px;
+  border-radius: 36px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  font-size: 28px;
+  color: var(--text-secondary, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.skip-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary, #333);
+}
+
+.skip-btn:active {
+  transform: scale(0.95);
+}
+
 .text-input {
   flex: 1;
   height: 100px;

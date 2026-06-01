@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import SplashView from '../views/splash/SplashView.vue'
 
 // ── 路由配置 ──────────────────────────────────────────────
 // 启动页 → 首页欢迎 → 用户信息 → 问诊流程（欢迎→过渡→问诊）
@@ -11,7 +10,7 @@ const router = createRouter({
     {
       path: '/',
       name: 'splash',
-      component: SplashView,
+      component: () => import('../views/splash/SplashView.vue'),
     },
     // 首页欢迎（助理欢迎）
     {

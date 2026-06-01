@@ -3,7 +3,9 @@
 import type { ILlmRequestMessage, ILlmCallOptions } from '@/types/llm'
 
 const DEFAULT_BASE_URL = '/llm-proxy'
-const DEFAULT_MODEL = 'deepseek-chat'
+// 默认模型：qwen3.7-max（阿里云百炼平台）
+// 如需切换模型，请修改 .env.local 中的 VITE_LLM_MODEL
+const DEFAULT_MODEL = 'qwen3.7-max'
 
 export async function callLLM(
   messages: ILlmRequestMessage[],

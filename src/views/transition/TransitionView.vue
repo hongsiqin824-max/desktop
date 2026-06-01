@@ -22,10 +22,10 @@ const subText = computed(() => {
 })
 
 onMounted(() => {
-  // 3秒后自动跳转到问诊界面
+  // 1.5秒后自动跳转到问诊界面（缩短过渡等待时间）
   setTimeout(() => {
     router.push('/consultation')
-  }, 3000)
+  }, 1500)
 })
 </script>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
 import { useUIStore } from '@/stores/global/ui'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
@@ -21,6 +22,7 @@ import './styles/ConsultationView.css'
 // ── 用户信息 ─────────────────────────────────────────────────
 const userStore = useUserStore()
 const uiStore = useUIStore()
+const router = useRouter()
 const userName = computed(() => userStore.userInfo.name || '朋友')
 const userInfo = computed(() => userStore.userInfo)
 
@@ -35,6 +37,7 @@ const messages = ref<IChatMessage[]>([])
 const chatAreaRef = ref<HTMLElement | null>(null)
 
 // ── 流程状态 ─────────────────────────────────────────────────
+const goToStepGeneration = ref(0) // 代次计数器：跳过/重新选择时递增，用于终止旧的异步流程
 const currentStepId = ref<StepIdType>('initial')
 const currentSymptom = ref('症状')
 const detailBranch = ref<string>('')
@@ -66,6 +69,8 @@ const { status: speechStatus, errorMessage: speechError, transcript: speechTrans
 const showVoiceToast = ref(false)
 const showErrorToast = ref(false)
 const errorToastText = ref('')
+const isSkipping = ref(false) // 用户主动跳过朗读时设为 true，阻止 onError toast 弹出
+let lastDoctorFullText = '' // 记录当前正在朗读的医生完整文本，跳过时用于强制补全文字
 
 // ── 异常回答关键词 ────────────────────────────────────────────
 const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
@@ -115,9 +120,11 @@ const confirmLastUserMessage = () => {
   }
 }
 
-const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') => {
+const doctorSay = (text: string, delay = 300, persona: PersonaType = 'doctor') => {
   // 锁定当前句倍速（中途切换不影响本句，下一句生效）
   const speed = uiStore.playbackSpeed
+  const gen = goToStepGeneration.value
+  lastDoctorFullText = text
   return new Promise<void>((resolve) => {
     isTyping.value = true
     let msgIdx = -1
@@ -130,7 +137,13 @@ const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') =
         }
         messages.value[msgIdx]!.text += char
         scrollToBottom()
-      }, speed)
+      }, speed, () => {
+        // TTS 失败：瞬间倾泻文字 + toast 告知用户原因（用户主动跳过时不弹 toast）
+        if (isSkipping.value) return
+        errorToastText.value = '语音服务暂时不可用，已切换为文字模式'
+        showErrorToast.value = true
+        setTimeout(() => { showErrorToast.value = false }, 5000)
+      })
       if (msgIdx === -1) {
         messages.value.push({ role: persona, text })
       } else {
@@ -138,9 +151,41 @@ const doctorSay = (text: string, delay = 600, persona: PersonaType = 'doctor') =
       }
       isTyping.value = false
       await scrollToBottom()
+      // 代次变化（用户点击跳过或触发新流程）→ 静默退出，不执行后续步骤跳转
+      if (goToStepGeneration.value !== gen) { resolve(); return }
       resolve()
     }, delay / speed)
   })
+}
+
+/** 跳过医生当前说话：停止TTS，瞬间显示完整文字，递增代次终止旧流程 */
+const skipDoctorSay = () => {
+  // 防抖：医生未在说话时不响应
+  if (!isTyping.value && !ttsIsSpeaking.value) return
+  isSkipping.value = true // 标记为主动跳过，阻止 onError toast
+  ttsStop()
+  isTyping.value = false
+  // 递增代次计数器，使所有进行中的旧异步流程静默退出
+  goToStepGeneration.value++
+
+  // 强制将最后一条医生/护士消息补全为完整文本
+  // （ttsStop 会释放 speakSync 的 promise，doctorSay 中 await 之后的文字赋值
+  //  可能因异步时序而延迟，此处同步补全确保用户立即看到完整文字）
+  if (lastDoctorFullText) {
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const msg = messages.value[i]!
+      if (msg.role === 'doctor' || msg.role === 'nurse') {
+        msg.text = lastDoctorFullText
+        break
+      }
+    }
+  }
+
+  // 如果当前步骤有 autoAdvance（过渡步骤），跳过后流程不能断裂，需立即推进到下一步
+  const flowStep = FLOW_STEPS[currentStepId.value]
+  if (flowStep?.autoAdvance) {
+    goToStep(flowStep.autoAdvance.nextStep)
+  }
 }
 
 const clearTimers = () => {
@@ -153,6 +198,37 @@ const clearTimers = () => {
   captureType.value = null
   captureProgress.value = 0
   captureCompleted.value = false
+}
+
+/** 重置问诊状态并返回首页 */
+const resetAndGoHome = () => {
+  clearTimers()
+  // 重置对话记录
+  messages.value = []
+  // 重置流程状态
+  currentStepId.value = 'initial'
+  currentSymptom.value = '症状'
+  detailBranch.value = ''
+  detailQuestionQueue.value = []
+  detailIsFirstQuestion.value = true
+  // 重置详细问诊状态
+  detail.detailQuestionCategory.value = 'chillHeat'
+  detail.detailAskedCategories.value = new Set()
+  detail.detailAnswers.value = []
+  detail.detailSeverityPending.value = null
+  detail.detailFailCount.value = 0
+  detail.genderQuestionsInjected.value = false
+  // 重置自选特征状态
+  selfFeature.resetSelfFeature()
+  // 重置分析数据
+  analysisData.value = null
+  syndromeOutputData.value = null
+  // 重置其他状态
+  invalidRetryCount.value = 0
+  clarificationCandidates.value = []
+  lastSnapshot.value = null
+  // 返回首页
+  router.push('/welcome')
 }
 
 // ── 初始化组合式函数（goToStep 通过 lambda 延迟引用，避免暂时性死区）──
@@ -349,6 +425,10 @@ const CAPTURE_SUCCESS_DELAY = 800
 // ── 处理流程跳转 ─────────────────────────────────────────────
 const goToStep = async (stepId: StepIdType, symptom?: string) => {
   clearTimers()
+  isSkipping.value = false // 重置跳过标志，确保新流程中 TTS 失败时能正常弹出 toast
+  // 递增代次计数器，使上一次 goToStep 的旧异步流程静默退出
+  goToStepGeneration.value++
+  const gen = goToStepGeneration.value
   // 锁定当前步骤倍速
   const speed = uiStore.playbackSpeed
   if (symptom) currentSymptom.value = symptom
@@ -402,16 +482,19 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
 
   // 发送消息（特殊类型标记）
   if (stepId === 'analysis_review') {
-    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'analysis'
+    await doctorSay(text, 800); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'analysis'
   } else if (stepId === 'detail_summary') {
-    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'summary'
+    await doctorSay(text, 800); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'summary'
   } else if (stepId === 'self_feature_summary') {
-    await doctorSay(text, 800); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg && selfFeature.selfFeatureRecords.value.length > 0) lastMsg.type = 'summary'
+    await doctorSay(text, 800); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg && selfFeature.selfFeatureRecords.value.length > 0) lastMsg.type = 'summary'
   } else if (stepId === 'syndrome_output') {
-    await doctorSay(text, 1200); const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'syndrome'
+    await doctorSay(text, 1200); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'syndrome'
   } else {
     await doctorSay(text)
   }
+
+  // 代次变化（用户跳过）→ 不启动采集动画和自动推进
+  if (goToStepGeneration.value !== gen) return
 
   // 启动采集动画
   if (step.captureType && step.autoAdvance) {
@@ -518,7 +601,9 @@ const onSubmitText = async (text: string) => {
   if (!text.trim()) {
     invalidRetryCount.value++
     if (invalidRetryCount.value >= RETRY_CONFIG.maxEmptyRetries) {
+      const genBeforeSay = goToStepGeneration.value
       await doctorSay(generateResponse('O_EMPTY_3'))
+      if (goToStepGeneration.value !== genBeforeSay) { invalidRetryCount.value = 0; return }
       const fallback = REFUSAL_FALLBACK[currentStepId.value]
       if (fallback) await goToStep(fallback)
       invalidRetryCount.value = 0; return
@@ -540,13 +625,17 @@ const onSubmitText = async (text: string) => {
 
   // 拒答检测
   if (REFUSAL_KEYWORDS.some(kw => text.includes(kw))) {
+    const genBeforeSay = goToStepGeneration.value
     await doctorSay(generateResponse('O_REFUSAL'))
+    if (goToStepGeneration.value !== genBeforeSay) return
     const fallback = REFUSAL_FALLBACK[currentStepId.value]
     if (fallback) await goToStep(fallback); return
   }
   // 不确定检测
   if (UNCERTAIN_KEYWORDS.some(kw => text.includes(kw))) {
+    const genBeforeSay = goToStepGeneration.value
     await doctorSay(generateResponse('UNCERTAIN'))
+    if (goToStepGeneration.value !== genBeforeSay) return
     const fallback = REFUSAL_FALLBACK[currentStepId.value]
     if (fallback) await goToStep(fallback); return
   }
@@ -905,6 +994,27 @@ onUnmounted(() => { clearTimers(); stopSpeech() })
         :title="speechStatus === 'listening' ? '点击停止录音' : '点击开始语音输入'"
       >
         {{ speechStatus === 'listening' ? '🔴' : speechStatus === 'processing' ? '⏳' : '🎙️' }}
+      </button>
+    </div>
+
+    <!-- 跳过按钮：医生说话时显示，点击立即停止并显示完整文字 -->
+    <div class="input-area" v-if="(isTyping || ttsIsSpeaking) && !currentStep.isEnd">
+      <button
+        class="skip-btn"
+        @click="skipDoctorSay"
+        title="跳过当前朗读"
+      >
+        ⏭ 跳过
+      </button>
+    </div>
+
+    <!-- 终态返回首页按钮 -->
+    <div class="input-area" v-if="currentStep.isEnd && !isTyping && !ttsIsSpeaking">
+      <button
+        class="go-home-btn"
+        @click="resetAndGoHome"
+      >
+        🏠 返回首页
       </button>
     </div>
 

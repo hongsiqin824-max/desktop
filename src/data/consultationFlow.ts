@@ -146,7 +146,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'end_moderate',
     doctorText: '好的，您的情况我们可以帮助调理！接下来为了更准确地为您辨证，需要采集一下您的舌象和脉象信息，请稍等～',
     isEnd: false,
-    autoAdvance: { nextStep: 'tongue_top_intro', delay: 2000 },
+    autoAdvance: { nextStep: 'tongue_top_intro', delay: 1000 },
   },
   end_hospital: {
     id: 'end_hospital',
@@ -164,7 +164,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'tongue_top_intro',
     doctorText: '为了更准确地为您辨证，接下来需要采集舌象和脉象信息。请您先找个光线充足的地方，面对镜头，自然地伸出舌头来，我看看。',
     captureType: 'tongue_top',
-    autoAdvance: { nextStep: 'tongue_bottom_intro', delay: 6000 },
+    autoAdvance: { nextStep: 'tongue_bottom_intro', delay: 3000 },
   },
 
   // ── 舌象采集：舌下 ─────────────────────────────────────────
@@ -172,7 +172,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'tongue_bottom_intro',
     doctorText: '好的，舌面已经采集到了。接下来请您将舌头向上卷起，舌尖抵住上牙根部，露出舌下脉络，我再看看。',
     captureType: 'tongue_bottom',
-    autoAdvance: { nextStep: 'pulse_intro', delay: 6000 },
+    autoAdvance: { nextStep: 'pulse_intro', delay: 3000 },
   },
 
   // ── 脉象采集 ──────────────────────────────────────────────
@@ -180,13 +180,13 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'pulse_intro',
     doctorText: '舌象采集完成。接下来请您将手腕自然平放，掌心向上，将手腕内侧脉搏跳动处贴近设备感应区，我们将为您测量脉搏。',
     captureType: 'pulse',
-    autoAdvance: { nextStep: 'pulse_done', delay: 7000 },
+    autoAdvance: { nextStep: 'pulse_done', delay: 3500 },
   },
 
   pulse_done: {
     id: 'pulse_done',
     doctorText: '好的，脉象数据已经采集完毕。',
-    autoAdvance: { nextStep: 'analysis_review', delay: 1500 },
+    autoAdvance: { nextStep: 'analysis_review', delay: 800 },
   },
 
   // ── 系统分析结果与确认 ───────────────────────────────────
@@ -204,7 +204,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   analysis_normal: {
     id: 'analysis_normal',
     doctorText: '',
-    autoAdvance: { nextStep: 'detail_transition', delay: 2000 },
+    autoAdvance: { nextStep: 'detail_transition', delay: 1000 },
   },
 
 // 明显异常 → 温馨提示
@@ -221,7 +221,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   analysis_continue: {
     id: 'analysis_continue',
     doctorText: '好的，我们继续为您辨证调理。',
-    autoAdvance: { nextStep: 'detail_transition', delay: 1500 },
+    autoAdvance: { nextStep: 'detail_transition', delay: 800 },
   },
 
   // 采集失败 → 引导重新采集
@@ -246,7 +246,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'detail_transition',
     doctorText: '',
     isEnd: false,
-    autoAdvance: { nextStep: 'detail_question', delay: 2500 },
+    autoAdvance: { nextStep: 'detail_question', delay: 1200 },
   },
 
   // ── 详细问诊：动态问题步骤 ──────────────────────────────
@@ -271,14 +271,14 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   detail_done: {
     id: 'detail_done',
     doctorText: '感谢您的耐心配合！前面的问诊信息已经全部记录好了。',
-    autoAdvance: { nextStep: 'self_feature_intro', delay: 2000 },
+    autoAdvance: { nextStep: 'self_feature_intro', delay: 1000 },
   },
 
   // ── 自选特征：开场引导 ──────────────────────────────────────
   self_feature_intro: {
     id: 'self_feature_intro',
     doctorText: '',
-    autoAdvance: { nextStep: 'self_feature_question', delay: 2000 },
+    autoAdvance: { nextStep: 'self_feature_question', delay: 1000 },
   },
 
   // ── 自选特征：动态问题步骤 ──────────────────────────────
@@ -303,7 +303,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   self_feature_done: {
     id: 'self_feature_done',
     doctorText: '好的，所有信息已确认完成，接下来系统将根据您的整体情况进行辨证分析。',
-    autoAdvance: { nextStep: 'syndrome_output', delay: 3000 },
+    autoAdvance: { nextStep: 'syndrome_output', delay: 1500 },
   },
 
   // ── 证型输出：辨证分析结果展示 ──────────────────────────────

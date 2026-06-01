@@ -48,6 +48,10 @@ export function useTTS() {
   let _twText = ''
   /** 当前语句播放倍速（speakSync 入口锁定，整句不可变） */
   let currentSpeed: number = 1
+  /** 当前 speakSync 的 resolve 回调，用于 stop() 主动释放挂起的 promise */
+  let _currentResolve: (() => void) | null = null
+  /** 代次计数器，使 stop() 能终止 speakCloud 的后续执行链（替代共享布尔值避免竞态条件） */
+  let _generation = 0
 
   // ── 清理所有资源 ──
   const clearSafetyTimer = () => {
@@ -192,11 +196,15 @@ export function useTTS() {
     onChar: (char: string) => void,
     speed: number,
     doResolve: () => void,
+    onError?: () => void,
   ): Promise<void> => {
-    let resolved = false
+    const myGen = ++_generation
     const localResolve = () => {
-      if (resolved) return
-      resolved = true
+      if (myGen !== _generation) return
+      // 未收到任何音频帧时触发降级回调
+      if (!firstAudioReceived && onError) {
+        onError()
+      }
       const savedIndex = twCharIndex
       cleanup()
       finishTypewriter(text, savedIndex, onChar)
@@ -232,7 +240,7 @@ export function useTTS() {
     }
 
     ws.onopen = () => {
-      if (!ws || resolved) return
+      if (!ws || myGen !== _generation) return
 
       // 1. 配置会话：模型 + 音色 + PCM 输出
       ws.send(JSON.stringify({
@@ -257,7 +265,7 @@ export function useTTS() {
     }
 
     ws.onmessage = (ev) => {
-      if (resolved) return
+      if (myGen !== _generation) return
       if (typeof ev.data !== 'string') return
 
       try {
@@ -323,7 +331,7 @@ export function useTTS() {
     }
 
     ws.onclose = (ev: CloseEvent) => {
-      if (!resolved) {
+      if (myGen === _generation) {
         // 连接异常关闭（非正常 response.done 后关闭）→ 降级
         console.warn(`[TTS] WebSocket closed unexpectedly: code=${ev.code}, reason=${ev.reason}`)
         localResolve()
@@ -338,21 +346,33 @@ export function useTTS() {
     persona: PersonaType,
     onChar: (char: string) => void,
     speed: number = 1,
+    onError?: () => void,
   ): Promise<void> => {
     return new Promise<void>((resolve) => {
       let resolved = false
       const doResolve = () => {
         if (resolved) return
         resolved = true
+        _currentResolve = null
         resolve()
       }
-      speakCloud(text, persona, onChar, speed, doResolve)
+      _currentResolve = doResolve
+      speakCloud(text, persona, onChar, speed, doResolve, onError)
     })
   }
 
   // ── 对外接口：立即停止朗读 ──
   const stop = () => {
+    // 递增代次，使所有旧的 speakCloud 调用的回调自动失效
+    // （避免旧调用的 await 恢复后继续执行、干扰新的 TTS 调用）
+    _generation++
     cleanup()
+    // 主动释放挂起的 speakSync promise（cleanup 已清空 WS 事件处理器，
+    // localResolve 不会再被触发，必须由 stop 主动 resolve，否则 doctorSay 中
+    // 的 await ttsSpeakSync(...) 永远不会返回）
+    if (_currentResolve) {
+      _currentResolve()
+    }
     isSpeaking.value = false
   }
 

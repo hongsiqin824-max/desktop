@@ -23,13 +23,12 @@ const btnText = computed(() => {
 })
 
 const displayedText = ref('')
-const showButton = ref(false)
 
 onMounted(async () => {
-  await speakSync(fullText.value, 'nurse', (char) => {
+  // 按钮立即显示，TTS 作为背景音播放，用户可随时点击进入
+  speakSync(fullText.value, 'nurse', (char) => {
     displayedText.value += char
   })
-  showButton.value = true
 })
 
 onUnmounted(() => {
@@ -56,7 +55,7 @@ const onContinueClick = () => {
       </div>
     </div>
 
-    <!-- 底部按钮（语音结束后显示） -->
-    <button class="action-btn" v-if="showButton" @click="onContinueClick">{{ btnText }}</button>
+    <!-- 底部按钮（立即显示，用户可随时跳过语音） -->
+    <button class="action-btn" @click="onContinueClick">{{ btnText }}</button>
   </div>
 </template>

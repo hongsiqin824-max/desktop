@@ -8,14 +8,13 @@ const router = useRouter()
 const { speakSync, stop: ttsStop } = useTTS()
 
 const displayedText = ref('')
-const showButton = ref(false)
 const fullText = '您好！欢迎使用中医智能问诊系统～'
 
-onMounted(async () => {
-  await speakSync(fullText, 'nurse', (char) => {
+onMounted(() => {
+  // TTS 作为背景音播放，按钮立即显示，用户可随时点击跳过
+  speakSync(fullText, 'nurse', (char) => {
     displayedText.value += char
   })
-  showButton.value = true
 })
 
 onUnmounted(() => {
@@ -42,7 +41,7 @@ const onStartClick = () => {
       </div>
     </div>
 
-    <!-- 底部按钮（语音结束后显示） -->
-    <button class="action-btn" v-if="showButton" @click="onStartClick">开始问诊</button>
+    <!-- 底部按钮（立即显示，用户可随时跳过语音） -->
+    <button class="action-btn" @click="onStartClick">开始问诊</button>
   </div>
 </template>

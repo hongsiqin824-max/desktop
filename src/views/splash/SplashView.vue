@@ -7,8 +7,8 @@ const router = useRouter()
 const progress = ref(0)
 
 onMounted(() => {
-  // 模拟加载进度
-  const duration = 3000 // 3秒加载
+  // 模拟加载进度（缩短为1秒快速过渡）
+  const duration = 1000 // 1秒加载
   const interval = 30
   const step = (100 / (duration / interval))
 
@@ -19,7 +19,7 @@ onMounted(() => {
       clearInterval(timer)
       setTimeout(() => {
         router.push('/welcome')
-      }, 500) // 加载满后停顿半秒跳转
+      }, 200) // 加载满后短暂停顿跳转
     }
   }, interval)
 })
