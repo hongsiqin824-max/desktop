@@ -85,23 +85,6 @@ export const SELF_FEATURE_SYMPTOMS: Record<string, ISelfFeatureSymptom[]> = {
     { label: '增生', brief: '固定硬结多余肉长出来', detail: '气滞血瘀或痰浊结聚成形成积', category: 'P', baseCode: 'ZE', semanticDesc: '多余肉硬结长多了增厚增生' },
     { label: '囊肿', brief: '皮下滑溜溜的无痛包块', detail: '多属痰湿抱团在皮下某个袋口', category: 'P', baseCode: 'NZ', semanticDesc: '滑溜溜的包水包皮下包块囊肿包块' },
   ],
-  // 男性专项（仅男16-65）
-maleSpecific: [
-    { label: '阳痿', brief: '勃起困难或无法维持', detail: '肾阳不足或肝经湿热下注', category: 'X', baseCode: 'YW', fixedTaCode: 'XYW', semanticDesc: '勃起困难或无法维持硬不起来' },
-    { label: '早泄', brief: '过早泄精控制不住', detail: '肾气不固或心肾不交', category: 'X', baseCode: 'ZX', fixedTaCode: 'XZX', semanticDesc: '过早泄精控制不住太快了' },
-    { label: '遗精', brief: '夜间不自主排精', detail: '肾虚封藏无力或相火妄动', category: 'K', baseCode: 'YJ', fixedTaCode: 'XYJ', semanticDesc: '夜间不自主排精睡觉时漏精' },
-    { label: '精少', brief: '精液量少稀薄', detail: '肾精亏耗生化不足', category: 'X', baseCode: 'JS', fixedTaCode: 'XJS', semanticDesc: '精液量少稀薄不够量' },
-    { label: '睾丸不适', brief: '睾丸胀痛坠胀或坠感', detail: '肝经湿热下注或寒凝肝脉', category: 'P', baseCode: 'GS', fixedTaCode: 'XGS', semanticDesc: '睾丸胀痛坠胀坠感蛋疼不舒服' },
-  ],
-  femaleSpecific: [
-    { label: '月经提前', brief: '周期不足21天提前来', detail: '血热或气虚推动太过', category: 'K', baseCode: 'YQT', fixedTaCode: 'XYQT', semanticDesc: '周期不足21天提前来月经提前了' },
-    { label: '月经延后', brief: '周期超过35天推迟来', detail: '血寒或肾虚推动不足', category: 'X', baseCode: 'YYH', fixedTaCode: 'XYH', semanticDesc: '周期超过35天推迟来月经推迟了月经晚来' },
-    { label: '月经不规律', brief: '忽前忽后没有固定周期', detail: '肝气郁结疏泄失调', category: 'P', baseCode: 'YBG', fixedTaCode: 'XYBG', semanticDesc: '忽前忽后没有固定周期月经不准时' },
-    { label: '闭经', brief: '该来不来超过3个月', detail: '精血枯竭或痰湿堵住经路', category: 'X', baseCode: 'BJ', fixedTaCode: 'XBJ', semanticDesc: '该来不来超过3个月月经停了月经不来了' },
-    { label: '经期腹痛', brief: '来月经时小腹疼痛', detail: '寒凝胞宫或瘀血阻络', category: 'K', baseCode: 'JQT', fixedTaCode: 'XJQT', semanticDesc: '来月经时小腹疼痛痛经肚子疼' },
-    { label: '带下异常', brief: '白带量多或色黄有味', detail: '湿浊下注或湿热熏蒸', category: 'P', baseCode: 'DX', fixedTaCode: 'XDX', semanticDesc: '白带量多或色黄有味分泌物异常' },
-    { label: '乳房不适', brief: '乳房胀痛或有硬结', detail: '肝郁气滞或痰瘀凝结', category: 'P', baseCode: 'RF', fixedTaCode: 'SRF', semanticDesc: '乳房胀痛或有硬结胸部不舒服' },
-  ],
 }
 
 // ── 部位→八维前缀映射 ──────────────────────────────────────────
@@ -117,8 +100,6 @@ export const SELF_FEATURE_CATEGORY_OPTIONS: ISelfFeatureCategoryOption[] = [
   { label: '更多感觉类', expandKey: 'sensationMore', semanticDesc: '用户想查看更多非疼痛类感觉异常的症状类型' },
   { label: '外观变化类', expandKey: 'appearance', semanticDesc: '用户想查看皮肤或局部外观发生变化类的症状' },
   { label: '功能受限类', expandKey: 'function', semanticDesc: '用户想查看功能活动受限类的症状' },
-  { label: '男性专项', expandKey: 'maleSpecific', genderCondition: 'male', ageRange: [16, 65], semanticDesc: '用户想查看男性生殖系统相关的症状' },
-  { label: '女性专项', expandKey: 'femaleSpecific', genderCondition: 'female', ageRange: [15, 50], semanticDesc: '用户想查看女性妇科相关的症状' },
 ]
 
 export const SELF_FEATURE_SEVERITY_OPTIONS = [

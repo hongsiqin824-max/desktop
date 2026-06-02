@@ -9,6 +9,7 @@ import { MERIDIAN_DATA, MERIDIAN_CODE_MAP, MERIDIAN_KEYWORD_MAP } from '@/data/m
 import { FLOW_STEPS } from '@/data/consultationFlow'
 import { generateResponse } from '@/data/consultationResponse'
 import type { IUserInfo } from '@/types/user'
+import { useConsultationStore } from '@/stores/consultation'
 
 export interface ISelfFeatureContext {
   userInfo: ComputedRef<IUserInfo>
@@ -21,6 +22,8 @@ export interface ISelfFeatureContext {
 
 export function useSelfFeature(ctx: ISelfFeatureContext) {
   const { userInfo, messages, goToStep, doctorSay, scrollToBottom, confirmLastUserMessage } = ctx
+
+  const consultationStore = useConsultationStore()
 
   const selfFeatureSubStep = ref<SelfFeatureSubStepType>('meridian')
   const selfFeatureRecords = ref<ISelfFeatureRecord[]>([])
@@ -166,7 +169,7 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
 
   // 记录完整的自选特征
   const pushRecord = (severity: 1 | 2) => {
-    selfFeatureRecords.value.push({
+    const record: ISelfFeatureRecord = {
       location: selfFeatureCurrentLocation.value,
       locationZone: selfFeatureCurrentLocationZone.value,
       symptom: selfFeatureCurrentSymptom.value,
@@ -176,7 +179,9 @@ export function useSelfFeature(ctx: ISelfFeatureContext) {
       fixedTaCode: selfFeatureCurrentSymptomFixedTaCode.value,
       meridianCode: selfFeatureCurrentMeridianCode.value || undefined,
       meridianName: selfFeatureCurrentMeridianName.value || undefined,
-    })
+    }
+    selfFeatureRecords.value.push(record)
+    consultationStore.addSelfFeatureRecord(record)
   }
 
   // 处理自选特征选项点击，返回 true 表示已处理

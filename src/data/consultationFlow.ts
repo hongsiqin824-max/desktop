@@ -1,6 +1,6 @@
 // 问诊流程状态机数据定义
 
-import type { StepIdType, IFlowStep, IAnalysisData } from '@/types/consultation'
+import type { StepIdType, IFlowStep, IAnalysisData, ITonguePulseCodes } from '@/types/consultation'
 
 // 拒答/未回答/不确定时的兜底跳转步骤
 export const REFUSAL_FALLBACK: Record<string, StepIdType> = {
@@ -25,20 +25,158 @@ export const REFUSAL_FALLBACK: Record<string, StepIdType> = {
   self_feature_done: 'syndrome_output',
 }
 
+/**
+ * 根据舌脉文本描述计算代码编号
+ * 参考文档：关于舌和脉的症状定义及计算.docx
+ */
+function computeTonguePulseCodes(
+  tongueCoating: string,
+  tongueCoatingColor: string,  // 新增：舌苔颜色
+  tongueColor: string,
+  tongueSize: string,
+  tongueBottom: string,
+  pulseType: string,
+  pulseRate: number
+): ITonguePulseCodes {
+  const codes: ITonguePulseCodes = {
+    // 脉象代码
+    LMB1: pulseRate,
+    MBJD: 0,
+    LXMB: 0,
+    LHMB: 0,
+    LSMB: 0,
+    LWMB: 0,
+    // 舌形代码
+    LSZ1: 0,
+    LSZ2: 0,
+    LSZ3: 0,
+    LSZ4: 0,
+    LSZ5: 0,
+    // 舌质颜色代码
+    LSZ6: 0,
+    LSZ7: 0,
+    LSZ8: 0,
+    LSZ9: 0,
+    LSZ10: 0,
+    // 舌苔形态代码
+    LSZ11: 0,
+    LSZ12: 0,
+    LSZ13: 0,
+    LSZ14: 0,
+    LSZ15: 0,
+    LSZ16: 0,
+    // 舌苔颜色代码
+    LSZ17: 0,
+    LSZ18: 0,
+    LSZ19: 0,
+    // 舌下代码
+    LSZ20: 0,
+  }
+
+  // 脉象映射
+  if (pulseType === '弦脉') codes.LXMB = 1
+  else if (pulseType === '滑脉') codes.LHMB = 1
+  else if (pulseType === '涩脉') codes.LSMB = 1
+  else if (pulseType === '无力脉') codes.LWMB = 1
+
+  // 舌质颜色映射
+  if (tongueColor === '淡白') codes.LSZ6 = 1
+  else if (tongueColor === '淡红') codes.LSZ7 = 1
+  else if (tongueColor === '红' || tongueColor === '暗红') codes.LSZ8 = 1
+  else if (tongueColor === '绛') codes.LSZ9 = 1
+  else if (tongueColor === '紫') codes.LSZ10 = 1
+
+  // 舌形映射
+  if (tongueSize.includes('齿痕')) {
+    codes.LSZ1 = 1
+    codes.LSZ2 = 1
+  } else if (tongueSize === '胖大') {
+    codes.LSZ2 = 1
+  } else if (tongueSize === '瘦薄') {
+    codes.LSZ3 = 1
+  }
+
+  // 舌苔形态映射
+  if (tongueCoating === '厚苔') codes.LSZ11 = 1
+  else if (tongueCoating === '薄苔') codes.LSZ12 = 1
+  else if (tongueCoating === '腻苔') codes.LSZ13 = 1
+  else if (tongueCoating === '苔腐') codes.LSZ14 = 1
+  else if (tongueCoating === '苔滑') codes.LSZ15 = 1
+  else if (tongueCoating === '剥苔') codes.LSZ16 = 1
+
+  // 舌苔颜色映射
+  if (tongueCoatingColor === '白') codes.LSZ17 = 1
+  else if (tongueCoatingColor === '浅黄') codes.LSZ18 = 1
+  else if (tongueCoatingColor === '深黄') codes.LSZ19 = 1
+
+  // 舌下状态映射
+  if (tongueBottom === '青紫') codes.LSZ20 = 1
+
+  return codes
+}
+
 // 模拟舌脉分析数据（按主症映射）
 export const MOCK_ANALYSIS: Record<string, IAnalysisData> = {
-  '感冒': { tongueCoating: '薄苔', tongueColor: '淡红', tongueSize: '正常', tongueBottom: '正常', pulseType: '浮脉', pulseRate: 72, isAbnormal: false },
-  '头痛': { tongueCoating: '薄苔', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常', pulseType: '弦脉', pulseRate: 78, isAbnormal: false },
-  '咳嗽': { tongueCoating: '腻苔', tongueColor: '淡红', tongueSize: '正常', tongueBottom: '正常', pulseType: '细脉', pulseRate: 70, isAbnormal: false },
-  '慢性疲劳': { tongueCoating: '薄苔', tongueColor: '淡白', tongueSize: '胖大有齿痕', tongueBottom: '青紫', pulseType: '无力脉', pulseRate: 58, isAbnormal: true },
-  '失眠': { tongueCoating: '腻苔', tongueColor: '红', tongueSize: '正常', tongueBottom: '迂曲', pulseType: '弦脉', pulseRate: 82, isAbnormal: false },
-  '发热': { tongueCoating: '薄苔', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常', pulseType: '数脉', pulseRate: 88, isAbnormal: false },
-  '怕冷': { tongueCoating: '薄苔', tongueColor: '淡白', tongueSize: '正常', tongueBottom: '正常', pulseType: '迟脉', pulseRate: 56, isAbnormal: true },
-  '血压偏高': { tongueCoating: '腻苔', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '迂曲', pulseType: '弦脉', pulseRate: 80, isAbnormal: false },
-  '腹型肥胖': { tongueCoating: '厚苔', tongueColor: '淡红', tongueSize: '胖大', tongueBottom: '正常', pulseType: '沉脉', pulseRate: 68, isAbnormal: false },
-  '脂肪肝': { tongueCoating: '腻苔', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '粗张', pulseType: '弦脉', pulseRate: 76, isAbnormal: false },
-  '肝郁气滞': { tongueCoating: '薄苔', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '迂曲', pulseType: '弦脉', pulseRate: 74, isAbnormal: false },
-  '焦虑': { tongueCoating: '薄苔', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常', pulseType: '弦脉', pulseRate: 84, isAbnormal: false },
+  '感冒': {
+    tongueCoating: '薄苔', tongueCoatingColor: '白', tongueColor: '淡红', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '浮脉', pulseRate: 72, isAbnormal: false,
+    codes: computeTonguePulseCodes('薄苔', '白', '淡红', '正常', '正常', '浮脉', 72)
+  },
+  '头痛': {
+    tongueCoating: '薄苔', tongueCoatingColor: '白', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '弦脉', pulseRate: 78, isAbnormal: false,
+    codes: computeTonguePulseCodes('薄苔', '白', '红', '正常', '正常', '弦脉', 78)
+  },
+  '咳嗽': {
+    tongueCoating: '腻苔', tongueCoatingColor: '白', tongueColor: '淡红', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '细脉', pulseRate: 70, isAbnormal: false,
+    codes: computeTonguePulseCodes('腻苔', '白', '淡红', '正常', '正常', '细脉', 70)
+  },
+  '慢性疲劳': {
+    tongueCoating: '薄苔', tongueCoatingColor: '白', tongueColor: '淡白', tongueSize: '胖大有齿痕', tongueBottom: '青紫',
+    pulseType: '无力脉', pulseRate: 58, isAbnormal: true,
+    codes: computeTonguePulseCodes('薄苔', '白', '淡白', '胖大有齿痕', '青紫', '无力脉', 58)
+  },
+  '失眠': {
+    tongueCoating: '腻苔', tongueCoatingColor: '浅黄', tongueColor: '红', tongueSize: '正常', tongueBottom: '迂曲',
+    pulseType: '弦脉', pulseRate: 82, isAbnormal: false,
+    codes: computeTonguePulseCodes('腻苔', '浅黄', '红', '正常', '迂曲', '弦脉', 82)
+  },
+  '发热': {
+    tongueCoating: '薄苔', tongueCoatingColor: '浅黄', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '数脉', pulseRate: 88, isAbnormal: false,
+    codes: computeTonguePulseCodes('薄苔', '浅黄', '红', '正常', '正常', '数脉', 88)
+  },
+  '怕冷': {
+    tongueCoating: '薄苔', tongueCoatingColor: '白', tongueColor: '淡白', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '迟脉', pulseRate: 56, isAbnormal: true,
+    codes: computeTonguePulseCodes('薄苔', '白', '淡白', '正常', '正常', '迟脉', 56)
+  },
+  '血压偏高': {
+    tongueCoating: '腻苔', tongueCoatingColor: '浅黄', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '迂曲',
+    pulseType: '弦脉', pulseRate: 80, isAbnormal: false,
+    codes: computeTonguePulseCodes('腻苔', '浅黄', '暗红', '正常', '迂曲', '弦脉', 80)
+  },
+  '腹型肥胖': {
+    tongueCoating: '厚苔', tongueCoatingColor: '白', tongueColor: '淡红', tongueSize: '胖大', tongueBottom: '正常',
+    pulseType: '沉脉', pulseRate: 68, isAbnormal: false,
+    codes: computeTonguePulseCodes('厚苔', '白', '淡红', '胖大', '正常', '沉脉', 68)
+  },
+  '脂肪肝': {
+    tongueCoating: '腻苔', tongueCoatingColor: '深黄', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '粗张',
+    pulseType: '弦脉', pulseRate: 76, isAbnormal: false,
+    codes: computeTonguePulseCodes('腻苔', '深黄', '暗红', '正常', '粗张', '弦脉', 76)
+  },
+  '肝郁气滞': {
+    tongueCoating: '薄苔', tongueCoatingColor: '白', tongueColor: '暗红', tongueSize: '正常', tongueBottom: '迂曲',
+    pulseType: '弦脉', pulseRate: 74, isAbnormal: false,
+    codes: computeTonguePulseCodes('薄苔', '白', '暗红', '正常', '迂曲', '弦脉', 74)
+  },
+  '焦虑': {
+    tongueCoating: '薄苔', tongueCoatingColor: '浅黄', tongueColor: '红', tongueSize: '正常', tongueBottom: '正常',
+    pulseType: '弦脉', pulseRate: 84, isAbnormal: false,
+    codes: computeTonguePulseCodes('薄苔', '浅黄', '红', '正常', '正常', '弦脉', 84)
+  },
 }
 
 export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {

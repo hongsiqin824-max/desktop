@@ -5,6 +5,7 @@ import type { StepIdType, IChatOption, IDetailAnswer, IDetailSeverityPending, IC
 import { DETAIL_QUESTION_MAP, DETAIL_SEQUENCE_MAP, DETAIL_FIRST_QUESTION, DETAIL_EXPLANATION_MAP, COLD_QUESTIONS, COLD_QUESTION_SEQUENCE, GENDER_QUESTIONS, GENDER_QUESTION_SEQUENCE, GENDER_CONDITIONS, SHARED_CHILL_HEAT_QUESTIONS, SHARED_THIRST_QUESTIONS, SHARED_TASTE_QUESTIONS, SHARED_STOOL_QUESTIONS, SHARED_BLOOD_STASIS_QUESTIONS, SHARED_SWEAT_QUESTIONS, SHARED_FATIGUE_QUESTIONS, SHARED_GENDER_FOLLOWUP_QUESTIONS, SHARED_FOLLOWUP_MAP } from '@/data/consultationDetail'
 import { generateResponse } from '@/data/consultationResponse'
 import { useUserStore } from '@/stores/global/user'
+import { useConsultationStore } from '@/stores/consultation'
 
 export interface IDetailContext {
   currentSymptom: Ref<string>
@@ -20,6 +21,8 @@ export interface IDetailContext {
 
 export function useDetailQuestion(ctx: IDetailContext) {
   const { currentSymptom, messages, detailIsFirstQuestion, detailBranch, detailQuestionQueue, goToStep, doctorSay, scrollToBottom, confirmLastUserMessage } = ctx
+
+  const consultationStore = useConsultationStore()
 
   const detailQuestionCategory = ref<string>('chillHeat')
   const detailAskedCategories = ref<Set<string>>(new Set())
@@ -178,6 +181,12 @@ export function useDetailQuestion(ctx: IDetailContext) {
         category: detailSeverityPending.value.parentCategory,
         questionText: `请问${detailSeverityPending.value.subjectText}的程度是较轻还是较重？`,
       })
+      consultationStore.addDetailAnswer({
+        taCode: severityTaCode,
+        label: `${detailSeverityPending.value.parentLabel}(${label})`,
+        category: detailSeverityPending.value.parentCategory,
+        questionText: `请问${detailSeverityPending.value.subjectText}的程度是较轻还是较重？`,
+      })
 
       const pending = detailSeverityPending.value
       detailSeverityPending.value = null
@@ -233,6 +242,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
       // 有 taCode 的选项才记录答案，没有 taCode 的是否定选项（不记录编码，仅推进流程）
       if (matchedOpt.taCode) {
         detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
+        consultationStore.addDetailAnswer({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
       }
 
       if (matchedOpt.followUpQuestions && matchedOpt.followUpQuestions.length > 0) {
@@ -331,6 +341,7 @@ export function useDetailQuestion(ctx: IDetailContext) {
       // 记录答案
       if (matchedOpt.taCode) {
         detailAnswers.value.push({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
+        consultationStore.addDetailAnswer({ taCode: matchedOpt.taCode, label: matchedOpt.label, category: question.category, questionText: question.doctorText })
       }
 
       // 收集追问（稍后统一插入队列）

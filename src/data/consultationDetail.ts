@@ -361,7 +361,7 @@ export const COUGH_QUESTIONS: Record<string, IDetailQuestion> = {
     doctorText: '请问您是否有咽部异物感的情况？',
     options: [
       { label: '有', taCode: 'PQZ4', severityQuestion: { subjectText: '咽部异物感', lighterCode: 'PQZ4A', heavierCode: 'PQZ4B' } },
-      { label: '没有', taCode: 'PQZ4' },
+      { label: '没有' },
     ],
   },
 
@@ -2010,7 +2010,7 @@ export const SHARED_GENDER_FOLLOWUP_QUESTIONS: Record<string, IDetailQuestion> =
     doctorText: '请问您是否有咽部异物感（感觉有东西堵着）？',
     options: [
       { label: '有', taCode: 'PQZ4', severityQuestion: { subjectText: '咽部异物感', lighterCode: 'PQZ4A', heavierCode: 'PQZ4B' } },
-      { label: '没有', taCode: 'PQZ4' },
+      { label: '没有' },
     ],
   },
 }

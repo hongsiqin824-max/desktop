@@ -187,15 +187,61 @@ export interface ISelfFeatureRecord {
 // ── 自选特征子步骤类型 ──────────────────────────────────────────
 export type SelfFeatureSubStepType = 'meridian' | 'location' | 'nature' | 'nature_expand' | 'severity' | 'continue'
 
+// ── 舌脉代码编号接口 ──────────────────────────────────────────
+// 参考文档：关于舌和脉的症状定义及计算.docx
+// 所有字段均为数值类型（0 或 1），用于后端辨证算法计算
+export interface ITonguePulseCodes {
+  // 脉象代码
+  LMB1: number   // 脉搏次数（次/分）
+  MBJD: 0 | 1    // 结代脉（0=否，1=是）
+  LXMB: 0 | 1    // 弦脉（0=否，1=是）
+  LHMB: 0 | 1    // 滑脉（0=否，1=是）
+  LSMB: 0 | 1    // 涩脉（0=否，1=是）
+  LWMB: 0 | 1    // 弱脉/无力脉（0=否，1=是）
+
+  // 舌形代码
+  LSZ1: 0 | 1    // 齿龈舌（0=否，1=是）
+  LSZ2: 0 | 1    // 胖大舌（0=否，1=是）
+  LSZ3: 0 | 1    // 瘦薄舌（0=否，1=是）
+  LSZ4: 0 | 1    // 裂纹舌（0=否，1=是）
+  LSZ5: 0 | 1    // 舌刺（0=否，1=是）
+
+  // 舌质颜色代码
+  LSZ6: 0 | 1    // 淡白舌（0=否，1=是）
+  LSZ7: 0 | 1    // 淡红舌（0=否，1=是）
+  LSZ8: 0 | 1    // 红舌（0=否，1=是）
+  LSZ9: 0 | 1    // 绛舌（0=否，1=是）
+  LSZ10: 0 | 1   // 紫舌（0=否，1=是）
+
+  // 舌苔形态代码
+  LSZ11: 0 | 1   // 苔厚（0=否，1=是）
+  LSZ12: 0 | 1   // 苔薄（0=否，1=是）
+  LSZ13: 0 | 1   // 苔腻（0=否，1=是）
+  LSZ14: 0 | 1   // 苔腐（0=否，1=是）
+  LSZ15: 0 | 1   // 苔滑（0=否，1=是）
+  LSZ16: 0 | 1   // 剥苔（0=否，1=是）
+
+  // 舌苔颜色代码
+  LSZ17: 0 | 1   // 苔白（0=否，1=是）
+  LSZ18: 0 | 1   // 苔浅黄（0=否，1=是）
+  LSZ19: 0 | 1   // 苔深黄（0=否，1=是）
+
+  // 舌下代码
+  LSZ20: 0 | 1   // 舌下紫暗（0=否，1=是）
+}
+
 // ── 舌脉分析数据接口 ──────────────────────────────────────────
 export interface IAnalysisData {
   tongueCoating: string
+  tongueCoatingColor: string  // 舌苔颜色：白/浅黄/深黄
   tongueColor: string
   tongueSize: string
   tongueBottom: string
   pulseType: string
   pulseRate: number
   isAbnormal: boolean
+  /** 舌脉代码编号（用于后端辨证算法） */
+  codes: ITonguePulseCodes
 }
 
 // ── 语音识别类型 ──────────────────────────────────────────────

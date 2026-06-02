@@ -1,28 +1,28 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTTS } from '@/composables/useTTS'
+import { useTTSStore } from '@/stores/global/tts'
 import './styles/AssistantWelcomeView.css'
 
 const router = useRouter()
-const { speakSync, stop: ttsStop } = useTTS()
+const ttsStore = useTTSStore()
 
 const displayedText = ref('')
 const fullText = '您好！欢迎使用中医智能问诊系统～'
 
 onMounted(() => {
   // TTS 作为背景音播放，按钮立即显示，用户可随时点击跳过
-  speakSync(fullText, 'nurse', (char) => {
+  ttsStore.speakSync(fullText, 'nurse', (char) => {
     displayedText.value += char
   })
 })
 
 onUnmounted(() => {
-  ttsStop()
+  ttsStore.stop()
 })
 
 const onStartClick = () => {
-  ttsStop()
+  ttsStore.stop()
   router.push('/user/form')
 }
 </script>

@@ -1,10 +1,29 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { useTTSStore } from '@/stores/global/tts'
+
+const ttsStore = useTTSStore()
+
+/** 全局跳过按钮点击：先标记"全局跳过"，再停止 TTS */
+const onGlobalSkip = () => {
+  ttsStore.markGlobalSkip()
+  ttsStore.stop()
+}
 </script>
 
 <template>
   <div class="app-container">
     <RouterView />
+
+    <!-- 全局跳过按钮：TTS 朗读时始终显示在右下角 -->
+    <button
+      v-if="ttsStore.isSpeaking"
+      class="global-skip-btn"
+      @click="onGlobalSkip"
+      title="跳过当前朗读"
+    >
+      ⏭ 跳过
+    </button>
   </div>
 </template>
 

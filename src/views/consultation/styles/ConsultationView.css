@@ -142,6 +142,7 @@
   flex-direction: column;
   gap: 32px;
   scroll-behavior: smooth;
+  position: relative;
 }
 
 /* 单条消息行 */
@@ -359,26 +360,34 @@
   transform: translateY(0) scale(0.98);
 }
 
-/* 跳过按钮：医生说话时显示 */
+/* 跳过按钮：对话区右下角绝对定位（不影响布局，不随消息滚动） */
 .skip-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 60px;
+  z-index: 10;
   height: 72px;
   padding: 0 40px;
   border-radius: 36px;
-  background: rgba(0, 0, 0, 0.06);
-  border: 2px solid rgba(0, 0, 0, 0.1);
+  background: var(--overlay-white-medium);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--overlay-white-border);
   font-size: 28px;
-  color: var(--text-secondary, #888);
+  color: var(--color-gray-600);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   transition: all 0.2s;
   cursor: pointer;
+  box-shadow: var(--shadow-skip-btn);
 }
 
 .skip-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
-  color: var(--text-primary, #333);
+  background: var(--overlay-white-strong);
+  color: var(--color-gray-800);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-skip-btn-hover);
 }
 
 .skip-btn:active {

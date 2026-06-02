@@ -36,3 +36,43 @@ input {
 ul, ol {
   list-style: none;
 }
+
+/* ── 全局跳过按钮（TTS 朗读时显示，固定在容器右下角）────────── */
+.global-skip-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 40px;
+  z-index: 9999;
+  height: 72px;
+  padding: 0 40px;
+  border-radius: 36px;
+  background: var(--overlay-white-medium);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--overlay-white-border);
+  font-size: 28px;
+  color: var(--color-gray-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-skip-btn);
+  transition: all 0.25s ease;
+  animation: globalSkipFadeIn 0.3s ease;
+}
+
+.global-skip-btn:hover {
+  background: var(--overlay-white-strong);
+  color: var(--color-gray-800);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-skip-btn-hover);
+}
+
+.global-skip-btn:active {
+  transform: scale(0.95);
+}
+
+@keyframes globalSkipFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}

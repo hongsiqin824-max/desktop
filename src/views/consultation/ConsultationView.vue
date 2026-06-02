@@ -3,9 +3,10 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
 import { useUIStore } from '@/stores/global/ui'
+import { useConsultationStore } from '@/stores/consultation'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
-import { useTTS } from '@/composables/useTTS'
-import type { PersonaType } from '@/composables/useTTS'
+import { useTTSStore } from '@/stores/global/tts'
+import type { PersonaType } from '@/types/consultation'
 import { useLLM } from '@/composables/useLLM'
 import type { IIntentResult } from '@/types/llm'
 import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
@@ -22,6 +23,7 @@ import './styles/ConsultationView.css'
 // ── 用户信息 ─────────────────────────────────────────────────
 const userStore = useUserStore()
 const uiStore = useUIStore()
+const consultationStore = useConsultationStore()
 const router = useRouter()
 const userName = computed(() => userStore.userInfo.name || '朋友')
 const userInfo = computed(() => userStore.userInfo)
@@ -63,7 +65,7 @@ const isTyping = ref(false)
 const clarificationCandidates = ref<string[]>([])
 
 // ── TTS / LLM / 语音识别 ────────────────────────────────────
-const { isSpeaking: ttsIsSpeaking, speakSync: ttsSpeakSync, stop: ttsStop } = useTTS()
+const ttsStore = useTTSStore()
 const { isLoading: llmIsLoading, recognizeIntent, classifyOption, abort: abortLLM } = useLLM()
 const { status: speechStatus, errorMessage: speechError, transcript: speechTranscript, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
 const showVoiceToast = ref(false)
@@ -129,7 +131,7 @@ const doctorSay = (text: string, delay = 300, persona: PersonaType = 'doctor') =
     isTyping.value = true
     let msgIdx = -1
     setTimeout(async () => {
-      await ttsSpeakSync(text, persona, (char) => {
+      await ttsStore.speakSync(text, persona, (char) => {
         if (msgIdx === -1) {
           msgIdx = messages.value.length
           messages.value.push({ role: persona, text: '' })
@@ -161,9 +163,9 @@ const doctorSay = (text: string, delay = 300, persona: PersonaType = 'doctor') =
 /** 跳过医生当前说话：停止TTS，瞬间显示完整文字，递增代次终止旧流程 */
 const skipDoctorSay = () => {
   // 防抖：医生未在说话时不响应
-  if (!isTyping.value && !ttsIsSpeaking.value) return
+  if (!isTyping.value && !ttsStore.isSpeaking) return
   isSkipping.value = true // 标记为主动跳过，阻止 onError toast
-  ttsStop()
+  ttsStore.stop()
   isTyping.value = false
   // 递增代次计数器，使所有进行中的旧异步流程静默退出
   goToStepGeneration.value++
@@ -193,7 +195,7 @@ const clearTimers = () => {
   if (captureStartTimerId.value) { clearTimeout(captureStartTimerId.value); captureStartTimerId.value = null }
   if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
   abortLLM()
-  ttsStop()
+  ttsStore.stop()
   isCapturing.value = false
   captureType.value = null
   captureProgress.value = 0
@@ -203,6 +205,8 @@ const clearTimers = () => {
 /** 重置问诊状态并返回首页 */
 const resetAndGoHome = () => {
   clearTimers()
+  // 重置问诊 store 数据
+  consultationStore.reset()
   // 重置对话记录
   messages.value = []
   // 重置流程状态
@@ -303,7 +307,7 @@ const progressPercent = computed(() => {
   return 0
 })
 
-const canReselect = computed(() => lastSnapshot.value !== null && !isTyping.value && !ttsIsSpeaking.value && !llmIsLoading.value && !currentStep.value.isEnd && !isCapturing.value)
+const canReselect = computed(() => lastSnapshot.value !== null && !isTyping.value && !ttsStore.isSpeaking && !llmIsLoading.value && !currentStep.value.isEnd && !isCapturing.value)
 
 // ── LLM 结果处理 ─────────────────────────────────────────────
 const SYMPTOM_ALIAS: Record<string, string> = {
@@ -334,20 +338,38 @@ const processLLMResult = (result: IIntentResult): boolean => {
 
   if (result.intent === 'acute') {
     const mapped = SYMPTOM_ALIAS[result.symptom!] || result.symptom
-    if (mapped) currentSymptom.value = mapped
+    if (mapped) {
+      currentSymptom.value = mapped
+      consultationStore.setMainSymptom(mapped)
+    }
     if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
-    if (result.severity === 'severe') { goToStep('end_severe'); return true }
-    if (result.severity === 'moderate' || result.severity === 'mild') { goToStep('end_moderate'); return true }
+    if (result.severity === 'severe') {
+      consultationStore.setSeverityLevel('severe')
+      goToStep('end_severe'); return true
+    }
+    if (result.severity === 'moderate' || result.severity === 'mild') {
+      consultationStore.setSeverityLevel(result.severity)
+      goToStep('end_moderate'); return true
+    }
     goToStep(mapped ? 'severity' : 'branch_b_symptom')
     return true
   }
 
   if (result.intent === 'chronic') {
     const mapped = SYMPTOM_ALIAS[result.symptom!] || result.symptom
-    if (mapped) currentSymptom.value = mapped
+    if (mapped) {
+      currentSymptom.value = mapped
+      consultationStore.setMainSymptom(mapped)
+    }
     if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
-    if (result.severity === 'severe') { goToStep('end_severe'); return true }
-    if (result.severity === 'moderate' || result.severity === 'mild') { goToStep('end_moderate'); return true }
+    if (result.severity === 'severe') {
+      consultationStore.setSeverityLevel('severe')
+      goToStep('end_severe'); return true
+    }
+    if (result.severity === 'moderate' || result.severity === 'mild') {
+      consultationStore.setSeverityLevel(result.severity)
+      goToStep('end_moderate'); return true
+    }
     goToStep(mapped ? 'severity' : 'branch_c_condition')
     return true
   }
@@ -383,7 +405,7 @@ const saveSnapshot = () => {
 const reselectCurrentAnswer = async () => {
   const snap = lastSnapshot.value
   if (!snap) return
-  clearTimers(); ttsStop()
+  clearTimers(); ttsStore.stop()
   currentStepId.value = snap.stepId; currentSymptom.value = snap.symptom
   messages.value.splice(snap.messagesLength)
   detail.detailQuestionCategory.value = snap.detailQuestionCategory
@@ -433,6 +455,12 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   const speed = uiStore.playbackSpeed
   if (symptom) currentSymptom.value = symptom
 
+  // ── 从 severity 步骤离开时，自动记录严重程度 ──
+  if (currentStepId.value === 'severity') {
+    if (stepId === 'end_severe') consultationStore.setSeverityLevel('severe')
+    else if (stepId === 'end_moderate') consultationStore.setSeverityLevel('mild')
+  }
+
   if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value) && (stepId === 'severity' || stepId === 'detail_transition' || stepId === 'detail_question')) {
     stepId = 'end_unsupported_symptom'
   }
@@ -447,10 +475,12 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   if (stepId === 'analysis_review') {
     const data = MOCK_ANALYSIS[currentSymptom.value] ?? MOCK_ANALYSIS['感冒']!
     analysisData.value = data
+    consultationStore.setAnalysisData(data)
     text = `根据系统分析，我这边看到的情况如下，请您确认是否与您目前的状态相符：
 
 舌象分析：
 • 舌苔厚薄：${data.tongueCoating}
+• 舌苔颜色：${data.tongueCoatingColor}
 • 舌质颜色：${data.tongueColor}
 • 舌质大小：${data.tongueSize}
 • 舌下状态：${data.tongueBottom}
@@ -477,6 +507,9 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   if (stepId === 'syndrome_output') {
     const output = generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
     syndromeOutputData.value = output
+    consultationStore.setSyndromeOutput(output)
+    consultationStore.endConsultation()
+    consultationStore.finalizeBackendPayload()
     text = '好的，根据您提供的所有信息，辨证分析已经完成，以下是您的辨证分析报告：'
   }
 
@@ -789,7 +822,7 @@ const onSubmitText = async (text: string) => {
 
 // ── 麦克风按钮 ───────────────────────────────────────────────
 const onMicClick = async () => {
-  ttsStop()
+  ttsStore.stop()
   if (speechStatus.value === 'listening') { showVoiceToast.value = false; stopSpeech(); return }
   if (speechStatus.value === 'error') { showVoiceToast.value = false; showErrorToast.value = false; stopSpeech(); return }
 
@@ -807,10 +840,23 @@ watch(speechTranscript, (val) => { if (speechStatus.value === 'listening' && val
 
 // ── 初始化 ───────────────────────────────────────────────────
 onMounted(async () => {
+  consultationStore.startConsultation()
   await doctorSay(`${userName.value}您好，我是您的中医师 🌿 接下来我会帮您了解一下身体状况，请放松心情～`, 800)
   await goToStep('initial')
 })
-onUnmounted(() => { clearTimers(); stopSpeech() })
+
+// ── 全局跳过按钮监听：当 App.vue 的全局跳过按钮调用 stop() 时，
+//    stopGeneration 递增，此处触发问诊页的跳过逻辑（补全文字 + 推进流程）──
+let isUnmounting = false
+watch(() => ttsStore.stopGeneration, () => {
+  // 仅当 stop() 来自外部调用（全局跳过按钮）时才触发跳过逻辑
+  // 自然播放完成不经过 stop()，stopGeneration 不变，watcher 不触发
+  if (!isUnmounting && ttsStore.consumeGlobalSkip()) {
+    skipDoctorSay()
+  }
+})
+
+onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
 </script>
 
 <template>
@@ -978,7 +1024,7 @@ onUnmounted(() => { clearTimers(); stopSpeech() })
     </div>
 
     <!-- 底部输入区：语音输入按钮（所有非终步骤均可使用） -->
-    <div class="input-area voice-only" v-if="!isTyping && !ttsIsSpeaking && !llmIsLoading && !currentStep.isEnd">
+    <div class="input-area voice-only" v-if="!isTyping && !ttsStore.isSpeaking && !llmIsLoading && !currentStep.isEnd">
       <button
         v-if="canReselect"
         class="reselect-btn"
@@ -997,19 +1043,8 @@ onUnmounted(() => { clearTimers(); stopSpeech() })
       </button>
     </div>
 
-    <!-- 跳过按钮：医生说话时显示，点击立即停止并显示完整文字 -->
-    <div class="input-area" v-if="(isTyping || ttsIsSpeaking) && !currentStep.isEnd">
-      <button
-        class="skip-btn"
-        @click="skipDoctorSay"
-        title="跳过当前朗读"
-      >
-        ⏭ 跳过
-      </button>
-    </div>
-
     <!-- 终态返回首页按钮 -->
-    <div class="input-area" v-if="currentStep.isEnd && !isTyping && !ttsIsSpeaking">
+    <div class="input-area" v-if="currentStep.isEnd && !isTyping && !ttsStore.isSpeaking">
       <button
         class="go-home-btn"
         @click="resetAndGoHome"

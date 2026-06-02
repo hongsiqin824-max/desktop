@@ -2,12 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
-import { useTTS } from '@/composables/useTTS'
+import { useTTSStore } from '@/stores/global/tts'
 import './styles/ConsultationWelcomeView.css'
 
 const router = useRouter()
 const userStore = useUserStore()
-const { speakSync, stop: ttsStop } = useTTS()
+const ttsStore = useTTSStore()
 
 const isNewUser = computed(() => userStore.isNewUser)
 
@@ -26,17 +26,17 @@ const displayedText = ref('')
 
 onMounted(async () => {
   // 按钮立即显示，TTS 作为背景音播放，用户可随时点击进入
-  speakSync(fullText.value, 'nurse', (char) => {
+  ttsStore.speakSync(fullText.value, 'nurse', (char) => {
     displayedText.value += char
   })
 })
 
 onUnmounted(() => {
-  ttsStop()
+  ttsStore.stop()
 })
 
 const onContinueClick = () => {
-  ttsStop()
+  ttsStore.stop()
   router.push('/consultation/transition')
 }
 </script>

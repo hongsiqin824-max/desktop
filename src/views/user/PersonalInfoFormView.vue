@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/global/user'
 import type { GenderType } from '@/types/user'
 import ValidationAlert from './components/ValidationAlert.vue'
 import VirtualKeyboard from '@/components/business/keyboard/VirtualKeyboard.vue'
-import { useTTS } from '@/composables/useTTS'
+import { useTTSStore } from '@/stores/global/tts'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { callLLM } from '@/api/llm'
 import { buildUserInfoParseMessages, parseUserInfoResult, extractPhoneLocally } from '@/data/llmPrompt'
@@ -13,7 +13,7 @@ import './styles/PersonalInfoFormView.css'
 
 const router = useRouter()
 const userStore = useUserStore()
-const { speakSync, stop: ttsStop } = useTTS()
+const ttsStore = useTTSStore()
 const { status: speechStatus, errorMessage: speechError, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
 
 const bubbleText = ref('')
@@ -26,13 +26,13 @@ const showErrorToast = ref(false)
 const errorToastText = ref('')
 
 onMounted(async () => {
-  await speakSync(fullBubbleText, 'nurse', (char) => {
+  await ttsStore.speakSync(fullBubbleText, 'nurse', (char) => {
     bubbleText.value += char
   })
 })
 
 onUnmounted(() => {
-  ttsStop()
+  ttsStore.stop()
   stopSpeech()
 })
 
@@ -107,7 +107,7 @@ const onKeyboardDelete = () => {
 const onVoiceMicClick = async () => {
   if (isVoiceBusy.value) return
   isVoiceBusy.value = true
-  ttsStop()
+  ttsStore.stop()
 
   if (speechStatus.value === 'listening') {
     showVoiceToast.value = false
@@ -160,16 +160,16 @@ const onVoiceMicClick = async () => {
 
       isVoiceParsing.value = false
       isVoiceBusy.value = false
-      await speakSync('好的，我已经帮您填写了识别到的信息，请检查一下是否正确，如有需要可以手动修改。', 'nurse', () => {})
+      await ttsStore.speakSync('好的，我已经帮您填写了识别到的信息，请检查一下是否正确，如有需要可以手动修改。', 'nurse', () => {})
     } else {
       isVoiceParsing.value = false
       isVoiceBusy.value = false
-      await speakSync('抱歉，我没能听清楚您的信息，请手动填写或再试一次语音输入。', 'nurse', () => {})
+      await ttsStore.speakSync('抱歉，我没能听清楚您的信息，请手动填写或再试一次语音输入。', 'nurse', () => {})
     }
   } catch {
     isVoiceParsing.value = false
     isVoiceBusy.value = false
-    await speakSync('语音识别服务暂时不可用，请手动填写您的信息。', 'nurse', () => {})
+    await ttsStore.speakSync('语音识别服务暂时不可用，请手动填写您的信息。', 'nurse', () => {})
   }
 }
 

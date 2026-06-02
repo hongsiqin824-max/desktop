@@ -38,6 +38,7 @@
   --color-gray-200: #E8E8E8;
   --color-gray-300: #DCDCDC;
   --color-gray-500: #999999;
+  --color-gray-600: #666666;
   --color-gray-800: #333333;
 
   /* 黑白 */
@@ -184,10 +185,14 @@
   --shadow-heavy: 0 15px 30px rgba(140, 106, 74, 0.3);
   --shadow-card: 0 20px 60px rgba(140, 106, 74, 0.15);
   --shadow-overlay: 0 -6px 30px rgba(140, 106, 74, 0.08);
+  --shadow-skip-btn: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-skip-btn-hover: 0 6px 16px rgba(0, 0, 0, 0.15);
 
   /* ── 透明度覆盖层预设 ──────────────────────────────────── */
   --overlay-white: rgba(255, 255, 255, 0.9);
+  --overlay-white-medium: rgba(255, 255, 255, 0.85);
   --overlay-white-strong: rgba(255, 255, 255, 0.95);
+  --overlay-white-border: rgba(255, 255, 255, 0.5);
   --overlay-warm: rgba(250, 248, 245, 0.92);
   --overlay-dark: rgba(50, 30, 10, 0.85);
   --overlay-black: rgba(0, 0, 0, 0.4);
