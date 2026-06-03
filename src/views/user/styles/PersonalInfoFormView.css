@@ -15,7 +15,7 @@
   left: 50%;
   transform: translateX(-50%);
   width: 1080px;
-  height: 1152px;
+  height: 1400px;
   display: flex;
   justify-content: center;
   align-items: flex-end;
@@ -29,17 +29,17 @@
   object-position: top center;
 }
 
-/* 数字人助理对话气泡 */
+/* 数字人助理对话气泡（浮在图片上方形成漫画对话效果） */
 .form-assistant-bubble {
   position: absolute;
-  top: 1112px;
+  top: 1335px;
   left: 50%;
   transform: translateX(-50%);
   width: 900px;
-  background-color: var(--color-beige-50);
+  background-color: rgba(250, 248, 245, 0.96);
   border-radius: 20px;
   padding: 30px 40px;
-  box-shadow: var(--form-bubble-shadow);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 5;
 }
 
@@ -52,7 +52,7 @@
   transform: translateX(-50%);
   border-width: 0 16px 16px 16px;
   border-style: solid;
-  border-color: transparent transparent var(--color-beige-50) transparent;
+  border-color: transparent transparent rgba(250, 248, 245, 0.96) transparent;
 }
 
 .form-bubble-text {
@@ -65,7 +65,7 @@
 /* 下半屏可滚动表单区域 */
 .form-scroll-container {
   position: absolute;
-  top: 1312px;
+  top: 1440px;
   left: 0;
   width: 100%;
   overflow-y: auto;
@@ -174,7 +174,7 @@
   border-radius: 60px;
   box-shadow: var(--btn-shadow);
   transition: transform 0.1s;
-  margin-top: 40px;
+  margin-top: 25px;
 }
 
 .submit-btn:active {
@@ -230,48 +230,41 @@
   border-radius: 50px;
 }
 
-/* ── 语音输入按钮 ─────────────────────────────── */
-.voice-input-section {
-  position: absolute;
-  top: 1180px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 900px;
-  display: flex;
-  justify-content: center;
-  z-index: 6;
-}
+/* ── 内嵌语音按钮（嵌于文案文字中） ─────────────────────────────── */
 
-.voice-mic-btn {
-  display: flex;
+.inline-voice-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px 48px;
+  gap: 6px;
+  padding: 6px 20px;
   background-color: var(--theme-primary);
   color: var(--color-white);
-  font-size: 32px;
+  font-size: 30px;
   font-weight: bold;
-  border-radius: 50px;
+  border-radius: 25px;
   box-shadow: var(--shadow-medium);
   transition: transform 0.1s, background-color 0.3s;
   cursor: pointer;
+  vertical-align: middle;
+  margin: 0 4px;
+  line-height: 1;
 }
 
-.voice-mic-btn:active {
+.inline-voice-btn:active {
   transform: scale(0.96);
 }
 
-.voice-mic-btn.listening {
+.inline-voice-btn.listening {
   background-color: var(--color-red-600);
   animation: voicePulse 1.2s ease-in-out infinite;
 }
 
-.voice-mic-icon {
-  font-size: 36px;
+.inline-mic-icon {
+  font-size: 30px;
 }
 
-.voice-mic-label {
-  font-size: 32px;
+.inline-mic-label {
+  font-size: 30px;
 }
 
 @keyframes voicePulse {

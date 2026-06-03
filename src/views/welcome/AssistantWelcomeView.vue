@@ -7,14 +7,12 @@ import './styles/AssistantWelcomeView.css'
 const router = useRouter()
 const ttsStore = useTTSStore()
 
-const displayedText = ref('')
+const displayedText = ref('您好！欢迎使用中医智能问诊系统～')
 const fullText = '您好！欢迎使用中医智能问诊系统～'
 
 onMounted(() => {
-  // TTS 作为背景音播放，按钮立即显示，用户可随时点击跳过
-  ttsStore.speakSync(fullText, 'nurse', (char) => {
-    displayedText.value += char
-  })
+  // 文字直接显示完整内容，TTS 作为背景音播放
+  ttsStore.speakSync(fullText, 'nurse', () => {})
 })
 
 onUnmounted(() => {

@@ -16,8 +16,7 @@ const userStore = useUserStore()
 const ttsStore = useTTSStore()
 const { status: speechStatus, errorMessage: speechError, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
 
-const bubbleText = ref('')
-const fullBubbleText = '很高兴为您服务！请先完善一下您的个人信息，这样我才能更好地为您服务哦～您也可以点击语音按钮，直接说出您的信息，我会自动帮您填写～'
+const fullBubbleText = '请完善个人信息，或点击语音按钮直接填写～'
 
 const isVoiceParsing = ref(false)
 const isVoiceBusy = ref(false)
@@ -26,9 +25,8 @@ const showErrorToast = ref(false)
 const errorToastText = ref('')
 
 onMounted(async () => {
-  await ttsStore.speakSync(fullBubbleText, 'nurse', (char) => {
-    bubbleText.value += char
-  })
+  // 文字直接显示完整内容，TTS 作为背景音播放
+  await ttsStore.speakSync(fullBubbleText, 'nurse', () => {})
 })
 
 onUnmounted(() => {
@@ -53,8 +51,8 @@ const activeField = ref<'name' | 'age' | 'height' | 'weight' | 'phone' | null>(n
 const keyboardMode = ref<'numeric' | 'chinese'>('numeric')
 
 const formContainerStyle = ref<Record<string, string>>({
-  top: '1312px',
-  height: '608px'
+  top: '1440px',
+  height: '603px'
 })
 
 const openKeyboard = (field: 'name' | 'age' | 'height' | 'weight' | 'phone', mode: 'numeric' | 'chinese' = 'numeric', event?: MouseEvent) => {
@@ -80,8 +78,8 @@ const openKeyboard = (field: 'name' | 'age' | 'height' | 'weight' | 'phone', mod
 const closeKeyboard = () => {
   showKeyboard.value = false
   formContainerStyle.value = {
-    top: '1312px',
-    height: '608px'
+    top: '1440px',
+    height: '603px'
   }
 }
 
@@ -228,22 +226,22 @@ const submitData = () => {
       <img class="user-assistant-img" src="@/assets/assistant.png" alt="中医助理" />
     </div>
 
-    <!-- 数字人助理对话气泡（键盘弹出时隐藏） -->
+    <!-- 数字人助理对话气泡（含内嵌语音按钮） -->
     <div class="form-assistant-bubble" v-show="!showKeyboard">
-      <div class="form-bubble-text">{{ bubbleText }}</div>
-    </div>
-
-    <!-- 语音输入按钮（键盘弹出时隐藏） -->
-    <div class="voice-input-section" v-show="!showKeyboard && !isVoiceParsing">
-      <button
-        class="voice-mic-btn"
-        :class="speechStatus"
-        @click="onVoiceMicClick"
-        :title="speechStatus === 'listening' ? '点击停止录音' : '点击语音输入个人信息'"
-      >
-        <span class="voice-mic-icon">🎤</span>
-        <span class="voice-mic-label">{{ speechStatus === 'listening' ? '正在录音...' : '语音填写' }}</span>
-      </button>
+      <div class="form-bubble-text">
+        请完善个人信息，或点击
+        <button
+          v-show="!isVoiceParsing"
+          class="inline-voice-btn"
+          :class="speechStatus"
+          @click="onVoiceMicClick"
+          :title="speechStatus === 'listening' ? '点击停止录音' : '点击语音输入个人信息'"
+        >
+          <span class="inline-mic-icon">🎤</span>
+          <span class="inline-mic-label">{{ speechStatus === 'listening' ? '正在录音...' : '语音填写' }}</span>
+        </button>
+        直接填写
+      </div>
     </div>
 
     <!-- 语音解析中提示 -->

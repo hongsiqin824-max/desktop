@@ -288,7 +288,6 @@ const INTENT_STEPS: Set<StepIdType> = new Set([
   'initial', 'branch_a_free', 'branch_b_symptom', 'branch_b_clarify',
   'branch_c_condition', 'branch_c_clarify',
 ])
-const isIntentStep = computed(() => INTENT_STEPS.has(currentStepId.value))
 const isSelfFeaturePhase = computed(() =>
   currentStepId.value === 'self_feature_intro' || currentStepId.value === 'self_feature_question' || currentStepId.value === 'self_feature_summary'
 )
@@ -308,6 +307,12 @@ const progressPercent = computed(() => {
 })
 
 const canReselect = computed(() => lastSnapshot.value !== null && !isTyping.value && !ttsStore.isSpeaking && !llmIsLoading.value && !currentStep.value.isEnd && !isCapturing.value)
+
+/** 当前步骤是否为纯自动过渡（无需用户输入，自动跳到下一步） */
+const isAutoTransition = computed(() => {
+  const step = currentStep.value
+  return step.autoAdvance && !step.isFreeInput && !(step.options && step.options.length > 0)
+})
 
 // ── LLM 结果处理 ─────────────────────────────────────────────
 const SYMPTOM_ALIAS: Record<string, string> = {
@@ -522,7 +527,9 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     await doctorSay(text, 800); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg && selfFeature.selfFeatureRecords.value.length > 0) lastMsg.type = 'summary'
   } else if (stepId === 'syndrome_output') {
     await doctorSay(text, 1200); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'syndrome'
-  } else {
+  } else if (stepId === 'analysis_normal') {
+    // 静默过渡：不播报，等 autoAdvance 自动跳到 detail_transition
+  } else if (text) {
     await doctorSay(text)
   }
 
@@ -1024,7 +1031,7 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
     </div>
 
     <!-- 底部输入区：语音输入按钮（所有非终步骤均可使用） -->
-    <div class="input-area voice-only" v-if="!isTyping && !ttsStore.isSpeaking && !llmIsLoading && !currentStep.isEnd">
+    <div class="input-area voice-only" v-if="!isTyping && !ttsStore.isSpeaking && !llmIsLoading && !currentStep.isEnd && !isAutoTransition">
       <button
         v-if="canReselect"
         class="reselect-btn"

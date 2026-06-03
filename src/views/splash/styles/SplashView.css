@@ -5,19 +5,30 @@
   height: 100%;
   position: relative;
   background-color: var(--theme-bg);
-  /* 淡墨山水底纹可以加在这里，用 background-image */
+  /* 淡墨山水渐变底纹，增加中医氛围感 */
+  background-image:
+    radial-gradient(ellipse at 50% 80%, rgba(139, 115, 85, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 30% 90%, rgba(139, 115, 85, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 85%, rgba(139, 115, 85, 0.05) 0%, transparent 50%);
+  /* 整体淡入效果 */
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 /* 顶部品牌部分 */
 .brand-section {
   position: absolute;
-  top: 300px;
+  top: 280px;
   left: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
+  gap: 30px;
 }
 
 .logo {
@@ -26,6 +37,14 @@
   border-radius: 50%;
   object-fit: cover;
   box-shadow: var(--logo-shadow);
+}
+
+/* 装饰分割线 */
+.brand-divider {
+  width: 120px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-brown-500), transparent);
+  opacity: 0.6;
 }
 
 .brand-name {
@@ -38,11 +57,11 @@
 /* 中部莲花部分 */
 .lotus-section {
   position: absolute;
-  top: 800px;
+  top: 750px;
   left: 50%;
   transform: translateX(-50%);
-  width: 400px;
-  height: 400px;
+  width: 500px;
+  height: 500px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -52,15 +71,21 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  animation: bloom 3s ease-out forwards;
+  animation: bloom 2s ease-out forwards;
   opacity: 0;
-  transform: scale(0.8);
+  transform: scale(0.85);
+  filter: drop-shadow(0 10px 30px rgba(139, 115, 85, 0.15));
+  -webkit-mask-image: radial-gradient(ellipse, black 50%, transparent 80%);
+  mask-image: radial-gradient(ellipse, black 50%, transparent 80%);
 }
 
 @keyframes bloom {
   0% {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.85);
+  }
+  60% {
+    opacity: 1;
   }
   100% {
     opacity: 1;
@@ -79,15 +104,23 @@
 
 .progress-bar {
   width: 100%;
-  height: 20px;
+  height: 30px;
   background-color: var(--color-beige-300);
-  border-radius: 10px;
+  border-radius: 15px;
   overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--color-brown-500), var(--color-brown-700));
-  border-radius: 10px;
+  border-radius: 15px;
   transition: width 0.1s linear;
+  /* 柔和脉冲动画 */
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
 }

@@ -138,11 +138,8 @@ export const RESPONSE_TEMPLATES: Record<ResponseScenarioType, string[]> = {
     '为了准确了解您的情况，请问您是有突发不适症状，还是想调理亚健康状态？您可以选择"突发不适"、"调理亚健康"或"都不是"。',
   ],
 
-  // 舌脉分析 — 确认相符（正常）
-  ANALYSIS_CONFIRM_NORMAL: [
-    '以上是您当前的舌脉情况，我们已经记录下来。接下来我将结合您刚才提到的【{symptom}】以及这些舌脉信息，为您进行详细辨证。',
-    '好的，舌脉信息已记录。接下来我会结合您的【{symptom}】和舌脉特征，为您做进一步的辨证分析。',
-  ],
+  // 舌脉分析 — 确认相符（正常）—— 静默过渡，不播报
+  ANALYSIS_CONFIRM_NORMAL: [],
 
   // 舌脉分析 — 确认相符但异常
   ANALYSIS_CONFIRM_ABNORMAL: [
@@ -154,10 +151,9 @@ export const RESPONSE_TEMPLATES: Record<ResponseScenarioType, string[]> = {
     '刚才的采集可能受到光线或设备影响。请您确保光线充足、手腕贴合紧密，我们重新采集一次可以吗？',
   ],
 
-  // 过渡至详细问诊
+  // 过渡至详细问诊（合并了原 analysis_normal + detail_transition 的信息）
   DETAIL_TRANSITION: [
-    '感谢您的配合，舌脉信息已经确认无误。接下来，我将向您了解几个与【{symptom}】相关的问题，以便更精确地为您辨证。',
-    '好的，舌脉信息已确认。接下来我会针对您的【{symptom}】再问几个方面的问题，帮助更准确地辨证，请放心回答就好。',
+    '好的，舌脉信息已记录。接下来针对您的【{symptom}】再了解几个问题，帮助更准确地辨证，请放心回答～',
   ],
 
   // 详细问诊开头

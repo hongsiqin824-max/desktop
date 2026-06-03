@@ -30,6 +30,7 @@ onMounted(() => {
     <!-- 顶部 LOGO 与 品牌名 -->
     <div class="brand-section">
       <img class="logo" src="@/assets/logo.png" alt="Logo" />
+      <div class="brand-divider"></div>
       <h1 class="brand-name">中医智能问诊系统</h1>
     </div>
 

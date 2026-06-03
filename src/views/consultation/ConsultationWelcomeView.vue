@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
 import { useTTSStore } from '@/stores/global/tts'
@@ -13,9 +13,9 @@ const isNewUser = computed(() => userStore.isNewUser)
 
 const fullText = computed(() => {
   if (isNewUser.value) {
-    return '您好，您第一次来，是新朋友呀！欢迎您！🌺\n稍等，我这就请中医师来给您问诊辨证。中医师会像聊天一样和您交流，请放松心情～'
+    return '您好，新朋友！欢迎您！🌺\n中医师这就来为您问诊辨证，请放松心情～'
   }
-  return '您好，噢，是老朋友来了！欢迎您再次光临！💐\n很高兴又见到您，我这就请中医师继续为您问诊辨证，我们马上开始～'
+  return '老朋友您好，欢迎回来！💐\n我请中医师继续为您问诊辨证，马上开始～'
 })
 
 const btnText = computed(() => {
@@ -25,10 +25,11 @@ const btnText = computed(() => {
 const displayedText = ref('')
 
 onMounted(async () => {
-  // 按钮立即显示，TTS 作为背景音播放，用户可随时点击进入
-  ttsStore.speakSync(fullText.value, 'nurse', (char) => {
-    displayedText.value += char
-  })
+  // 文字直接显示完整内容，TTS 作为背景音播放
+  displayedText.value = fullText.value
+  // 等待前一页的清理任务完成，避免旧 stop() 取消新 speakSync
+  await nextTick()
+  ttsStore.speakSync(fullText.value, 'nurse', () => {})
 })
 
 onUnmounted(() => {

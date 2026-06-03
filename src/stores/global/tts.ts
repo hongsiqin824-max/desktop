@@ -222,8 +222,8 @@ export const useTTSStore = defineStore('globalTTS', () => {
     }
 
     isSpeaking.value = true
-    // 音频倍速：最高 1.25x，超过时音频保持原速（避免音调变形）
-    currentSpeed = Math.min(speed, 1.25)
+    // 音频倍速：与传入 speed 一致，直接使用 playbackRate 加速（音调会随速度升高）
+    currentSpeed = speed
 
     // 安全超时兜底（TTS 合成时间 + 音频播放时间 + 30s 余量，按倍速缩短）
     const charsPerSec = PERSONA_CHARS_PER_SEC[persona]
