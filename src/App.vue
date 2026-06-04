@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { onMounted, onUnmounted } from 'vue'
 import { useTTSStore } from '@/stores/global/tts'
 
 const ttsStore = useTTSStore()
@@ -9,6 +10,24 @@ const onGlobalSkip = () => {
   ttsStore.markGlobalSkip()
   ttsStore.stop()
 }
+
+// 动态计算缩放比例，使 1080×1920 的容器适配任意窗口大小
+const DESIGN_W = 1080
+const DESIGN_H = 1920
+const updateScale = () => {
+  const scaleX = window.innerWidth / DESIGN_W
+  const scaleY = window.innerHeight / DESIGN_H
+  const scale = Math.min(scaleX, scaleY, 1) // 不超过原始大小
+  document.documentElement.style.setProperty('--app-scale', String(scale))
+}
+
+onMounted(() => {
+  updateScale()
+  window.addEventListener('resize', updateScale)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', updateScale)
+})
 </script>
 
 <template>
@@ -38,11 +57,11 @@ const onGlobalSkip = () => {
   box-shadow: var(--container-shadow); /* 添加些许阴影以便在PC上查看边界 */
 }
 
-/* 如果在较小屏幕上预览，可以使用 transform 缩放 */
-@media (max-height: 1920px) {
+/* 在较小屏幕上自动等比缩放，适配桌面开发/演示 */
+@media (max-height: 1920px), (max-width: 1080px) {
   .app-container {
     transform-origin: top center;
-    /* transform: scale(calc(100vh / 1920)); 可以取消注释以适应屏幕 */
+    transform: scale(var(--app-scale, 1));
   }
 }
 </style>

@@ -7,9 +7,9 @@
   background-color: var(--theme-bg);
   /* 淡墨山水渐变底纹，增加中医氛围感 */
   background-image:
-    radial-gradient(ellipse at 50% 80%, rgba(139, 115, 85, 0.08) 0%, transparent 60%),
-    radial-gradient(ellipse at 30% 90%, rgba(139, 115, 85, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 85%, rgba(139, 115, 85, 0.05) 0%, transparent 50%);
+    radial-gradient(ellipse at 50% 80%, var(--splash-ink-light) 0%, transparent 60%),
+    radial-gradient(ellipse at 30% 90%, var(--splash-ink-lightest) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 85%, var(--splash-ink-lightest) 0%, transparent 50%);
   /* 整体淡入效果 */
   animation: fadeIn 0.5s ease-out;
 }
@@ -74,7 +74,7 @@
   animation: bloom 2s ease-out forwards;
   opacity: 0;
   transform: scale(0.85);
-  filter: drop-shadow(0 10px 30px rgba(139, 115, 85, 0.15));
+  filter: drop-shadow(0 10px 30px var(--splash-ink-shadow));
   -webkit-mask-image: radial-gradient(ellipse, black 50%, transparent 80%);
   mask-image: radial-gradient(ellipse, black 50%, transparent 80%);
 }
@@ -108,7 +108,7 @@
   background-color: var(--color-beige-300);
   border-radius: 15px;
   overflow: hidden;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-inset-xs);
 }
 
 .progress-fill {

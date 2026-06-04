@@ -242,8 +242,12 @@ export const useTTSStore = defineStore('globalTTS', () => {
 
     // ── 建立 WebSocket ──
     try {
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${location.host}${WS_PATH_MAP[persona]}`)
+      // Tauri 走 Rust 代理，浏览器走 Vite proxy
+      const isTauri = !!window.__TAURI__
+      const wsBase = isTauri
+        ? 'ws://localhost:1420'
+        : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`
+      ws = new WebSocket(`${wsBase}${WS_PATH_MAP[persona]}`)
     } catch {
       localResolve()
       return

@@ -36,7 +36,7 @@
   left: 50%;
   transform: translateX(-50%);
   width: 900px;
-  background-color: rgba(250, 248, 245, 0.96);
+  background-color: var(--overlay-warm-strong);
   border-radius: 20px;
   padding: 30px 40px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -52,7 +52,7 @@
   transform: translateX(-50%);
   border-width: 0 16px 16px 16px;
   border-style: solid;
-  border-color: transparent transparent rgba(250, 248, 245, 0.96) transparent;
+  border-color: transparent transparent var(--overlay-warm-strong) transparent;
 }
 
 .form-bubble-text {

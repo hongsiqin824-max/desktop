@@ -7,7 +7,7 @@ import ValidationAlert from './components/ValidationAlert.vue'
 import VirtualKeyboard from '@/components/business/keyboard/VirtualKeyboard.vue'
 import { useTTSStore } from '@/stores/global/tts'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
-import { callLLM } from '@/api/llm'
+import { fetchLLMCompletion } from '@/api/llm'
 import { buildUserInfoParseMessages, parseUserInfoResult, extractPhoneLocally } from '@/data/llmPrompt'
 import './styles/PersonalInfoFormView.css'
 
@@ -145,7 +145,7 @@ const onVoiceMicClick = async () => {
   isVoiceParsing.value = true
   try {
     const messages = buildUserInfoParseMessages(text)
-    const raw = await callLLM(messages)
+    const raw = await fetchLLMCompletion(messages)
     const result = parseUserInfoResult(raw)
 
     if (result) {

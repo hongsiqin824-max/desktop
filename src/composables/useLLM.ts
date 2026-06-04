@@ -1,7 +1,7 @@
 // LLM 意图识别组合式函数：调用大模型 + 超时兜底 + 关键词回退
 
 import { ref } from 'vue'
-import { callLLM } from '@/api/llm'
+import { fetchLLMCompletion } from '@/api/llm'
 import { buildIntentMessages, parseIntentResult, buildOptionMatchMessages, parseOptionMatchResult } from '@/data/llmPrompt'
 import type { IIntentResult, IOptionMatchResult } from '@/types/llm'
 
@@ -33,7 +33,7 @@ export function useLLM() {
 
     abort()
     currentController = new AbortController()
-    const resultPromise = callLLM(messages, { signal: currentController.signal })
+    const resultPromise = fetchLLMCompletion(messages, { signal: currentController.signal })
 
     let timeoutId: ReturnType<typeof setTimeout> = undefined!
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -70,7 +70,7 @@ export function useLLM() {
 
     abort()
     currentController = new AbortController()
-    const resultPromise = callLLM(messages, { signal: currentController.signal })
+    const resultPromise = fetchLLMCompletion(messages, { signal: currentController.signal })
 
     let timeoutId: ReturnType<typeof setTimeout> = undefined!
     const timeoutPromise = new Promise<never>((_, reject) => {

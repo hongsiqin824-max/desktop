@@ -128,9 +128,9 @@
 }
 
 .speed-toggle-btn.speed-1\.5 {
-  background: var(--theme-primary-dark, var(--theme-primary));
+  background: var(--theme-primary-dark);
   color: var(--color-white);
-  border-color: var(--theme-primary-dark, var(--theme-primary));
+  border-color: var(--theme-primary-dark);
 }
 
 /* ── 中间：对话区 ────────────────────────────────────────── */

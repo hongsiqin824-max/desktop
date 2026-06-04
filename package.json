@@ -14,7 +14,8 @@
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
-    "lint:eslint": "eslint . --fix --cache"
+    "lint:eslint": "eslint . --fix --cache",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tresjs/cientos": "^5.7.1",
@@ -28,6 +29,7 @@
     "ws": "^8.20.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
     "@tsconfig/node20": "^20.1.4",
     "@types/node": "^20.17.6",
     "@types/three": "^0.184.1",

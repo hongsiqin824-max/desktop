@@ -60,6 +60,7 @@
   --theme-border-light: var(--color-beige-400);
   --theme-surface: var(--color-white);
   --theme-surface-warm: var(--color-beige-200);
+  --theme-primary-dark: var(--color-brown-600);
 
   /* ── 组件状态层 ──────────────────────────────────────────── */
 
@@ -187,6 +188,9 @@
   --shadow-overlay: 0 -6px 30px rgba(140, 106, 74, 0.08);
   --shadow-skip-btn: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-skip-btn-hover: 0 6px 16px rgba(0, 0, 0, 0.15);
+  --shadow-button: var(--shadow-heavy);
+  --shadow-button-hover: 0 8px 25px rgba(140, 106, 74, 0.35);
+  --shadow-inset-xs: inset 0 2px 4px rgba(0, 0, 0, 0.08);
 
   /* ── 透明度覆盖层预设 ──────────────────────────────────── */
   --overlay-white: rgba(255, 255, 255, 0.9);
@@ -194,6 +198,7 @@
   --overlay-white-strong: rgba(255, 255, 255, 0.95);
   --overlay-white-border: rgba(255, 255, 255, 0.5);
   --overlay-warm: rgba(250, 248, 245, 0.92);
+  --overlay-warm-strong: rgba(250, 248, 245, 0.96);
   --overlay-dark: rgba(50, 30, 10, 0.85);
   --overlay-black: rgba(0, 0, 0, 0.4);
   --overlay-black-light: rgba(0, 0, 0, 0.15);
@@ -203,6 +208,7 @@
   --badge-bg: var(--overlay-white);
   --badge-shadow: var(--shadow-light);
   --form-bubble-shadow: var(--shadow-light);
+  --welcome-bubble-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
   --btn-shadow: var(--shadow-heavy);
   --btn-shadow-pressed: 0 5px 15px rgba(140, 106, 74, 0.2);
   --doctor-shadow: var(--shadow-xs);
@@ -212,6 +218,11 @@
   --toast-box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   --mic-pulse-shadow-start: 0 0 0 0 rgba(231, 76, 60, 0.4);
   --mic-pulse-shadow-end: 0 0 0 20px rgba(231, 76, 60, 0);
+
+  /* ── 启动页专用 ──────────────────────────────────────────── */
+  --splash-ink-lightest: rgba(139, 115, 85, 0.05);
+  --splash-ink-light: rgba(139, 115, 85, 0.08);
+  --splash-ink-shadow: rgba(139, 115, 85, 0.15);
 
   /* ── 经脉3D场景色值（科技风半透明主题） ─────────────────── */
   --meridian-scene-bg: #0D1117;

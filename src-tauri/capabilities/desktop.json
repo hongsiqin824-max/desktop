@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "桌面端权限配置（含开发模式权限）",
+  "windows": ["main"],
+  "platforms": ["macOS", "windows", "linux"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-create-webview-window"
+  ]
+}

@@ -28,6 +28,9 @@ coverage
 
 .eslintcache
 
+# Tauri
+src-tauri/target/
+
 # Cypress
 /cypress/videos/
 /cypress/screenshots/

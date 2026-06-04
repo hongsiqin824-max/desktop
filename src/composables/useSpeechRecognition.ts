@@ -201,6 +201,9 @@ export function useSpeechRecognition() {
   }
 
   const buildWsUrl = (): string => {
+    // Tauri 走 Rust 代理，浏览器走 Vite proxy
+    const isTauri = !!window.__TAURI__
+    if (isTauri) return 'ws://localhost:1420/asr-proxy'
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${protocol}//${location.host}/asr-proxy`
   }

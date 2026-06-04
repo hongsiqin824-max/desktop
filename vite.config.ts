@@ -8,12 +8,13 @@ import { templateCompilerOptions } from '@tresjs/core'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
+  const isTauri = !!process.env.TAURI_DEV
 
   return {
     plugins: [
       vue(templateCompilerOptions),
       vueDevTools(),
-      basicSsl(),
+      ...isTauri ? [] : [basicSsl()],
     ],
     resolve: {
       alias: {
@@ -22,6 +23,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true,
+      strictPort: true,
       proxy: {
         '/llm-proxy': {
           target: 'https://dashscope.aliyuncs.com/compatible-mode/v1',

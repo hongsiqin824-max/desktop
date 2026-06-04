@@ -2,12 +2,14 @@
 
 import type { ILlmRequestMessage, ILlmCallOptions } from '@/types/llm'
 
-const DEFAULT_BASE_URL = '/llm-proxy'
+// 运行时判断：Tauri 走 Rust 代理，浏览器走 Vite proxy
+const isTauri = typeof window !== 'undefined' && !!window.__TAURI__
+const DEFAULT_BASE_URL = isTauri ? 'http://localhost:1420/llm-proxy' : '/llm-proxy'
 // 默认模型：qwen3.7-max（阿里云百炼平台）
 // 如需切换模型，请修改 .env.local 中的 VITE_LLM_MODEL
 const DEFAULT_MODEL = 'qwen3.7-max'
 
-export async function callLLM(
+export async function fetchLLMCompletion(
   messages: ILlmRequestMessage[],
   options?: ILlmCallOptions,
 ): Promise<string> {
