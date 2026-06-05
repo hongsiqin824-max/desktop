@@ -30,6 +30,8 @@ export function useSpeechRecognition() {
   let retryTimer: number | null = null
   let hasAudioActivity = false
   let pcmChunks: Int16Array[] = []
+  let audioBuffer: Int16Array[] = []
+  const MAX_BUFFER_SIZE = 50
   let finalText = ''
   let interimText = ''
   let resolveStop: ((text: string) => void) | null = null
@@ -175,6 +177,7 @@ export function useSpeechRecognition() {
       ws = null
     }
     pcmChunks = []
+    audioBuffer = []
     firCoeffs = null
     firOverlap = null
     agcPeak = 0
@@ -210,7 +213,49 @@ export function useSpeechRecognition() {
   }
 
   const sendAudioChunk = (merged: Int16Array) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !sessionReady) return
+    // 检查 WebSocket 连接状态
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+    // session 未就绪时，缓存音频
+    if (!sessionReady) {
+      audioBuffer.push(merged)
+
+      // 防止缓冲溢出（丢弃最早的音频）
+      if (audioBuffer.length > MAX_BUFFER_SIZE) {
+        audioBuffer.shift()
+        if (import.meta.env.DEV) {
+          console.warn('[ASR] 音频缓冲已满，丢弃最早的数据')
+        }
+      }
+
+      // 首次缓存时输出提示（仅开发环境）
+      if (audioBuffer.length === 1 && import.meta.env.DEV) {
+        console.log('[ASR] session 初始化中，音频已缓存')
+      }
+
+      return
+    }
+
+    // session 就绪后，先发送缓存的音频
+    if (audioBuffer.length > 0) {
+      if (import.meta.env.DEV) {
+        console.log(`[ASR] session 就绪，补发 ${audioBuffer.length} 个缓存音频块`)
+      }
+
+      // 按顺序发送所有缓存的音频
+      for (const chunk of audioBuffer) {
+        const base64 = audioBufferToBase64(chunk)
+        ws.send(JSON.stringify({
+          type: 'input_audio_buffer.append',
+          audio: base64,
+        }))
+      }
+
+      // 清空缓冲
+      audioBuffer = []
+    }
+
+    // 发送当前音频（原有逻辑）
     const base64 = audioBufferToBase64(merged)
     ws.send(JSON.stringify({
       type: 'input_audio_buffer.append',
@@ -228,6 +273,7 @@ export function useSpeechRecognition() {
     transcriptionDone = false
     hasAudioActivity = false
     pcmChunks = []
+    audioBuffer = []
     if (ws) {
       ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null
       try { ws.close() } catch {}
@@ -241,6 +287,15 @@ export function useSpeechRecognition() {
     if (sendTimer) return // 已启动，不重复
     // 使用 worklet 时，必须等 worklet 就绪
     if (workletNode && !workletReady) return
+
+    // 输出缓冲状态（仅开发环境）
+    if (import.meta.env.DEV) {
+      if (audioBuffer.length > 0) {
+        console.log(`[ASR] 开始发送音频，已有 ${audioBuffer.length} 个缓存块待补发`)
+      } else {
+        console.log('[ASR] 开始发送音频，无缓存')
+      }
+    }
 
     sendTimer = window.setInterval(() => {
       if (pcmChunks.length > 0 && ws?.readyState === WebSocket.OPEN && sessionReady) {
@@ -402,6 +457,7 @@ export function useSpeechRecognition() {
     firOverlap = null
     agcPeak = 0
     sessionReady = false
+    audioBuffer = []
 
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({
