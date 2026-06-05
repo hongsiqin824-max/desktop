@@ -3,6 +3,9 @@
  * Rust 代理服务器端口，所有前端连接都通过此配置获取
  */
 
+/** 是否在 Tauri 桌面环境运行（兼容 SSR/Node 环境） */
+export const isTauri = typeof window !== 'undefined' && !!window.__TAURI__
+
 /** Tauri 模式下 Rust 代理服务器的端口 */
 export const PROXY_PORT = 1420
 

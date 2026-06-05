@@ -1,10 +1,8 @@
 // 大模型接口客户端（兼容通用协议）
 
 import type { ILlmRequestMessage, ILlmCallOptions } from '@/types/llm'
-import { PROXY_HTTP_BASE } from '@/config/proxy'
+import { PROXY_HTTP_BASE, isTauri } from '@/config/proxy'
 
-// 运行时判断：Tauri 走 Rust 代理，浏览器走 Vite proxy
-const isTauri = typeof window !== 'undefined' && !!window.__TAURI__
 const DEFAULT_BASE_URL = isTauri ? `${PROXY_HTTP_BASE}/llm-proxy` : '/llm-proxy'
 // 默认模型：qwen3.7-max（阿里云百炼平台）
 // 如需切换模型，请修改 .env.local 中的 VITE_LLM_MODEL

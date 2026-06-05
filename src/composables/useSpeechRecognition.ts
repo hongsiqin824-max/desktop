@@ -2,7 +2,7 @@
 // WebSocket 流式音频 → Base64 PCM → Realtime JSON 事件协议
 import { ref } from 'vue'
 import type { SpeechStatusType } from '@/types/consultation'
-import { PROXY_WS_BASE } from '@/config/proxy'
+import { PROXY_WS_BASE, isTauri } from '@/config/proxy'
 
 export function useSpeechRecognition() {
   const status = ref<SpeechStatusType>('idle')
@@ -202,11 +202,11 @@ export function useSpeechRecognition() {
   }
 
   const buildWsUrl = (): string => {
+    const asrPath = import.meta.env.VITE_ASR_PROXY_URL || '/asr-proxy'
     // Tauri 走 Rust 代理，浏览器走 Vite proxy
-    const isTauri = !!window.__TAURI__
-    if (isTauri) return `${PROXY_WS_BASE}/asr-proxy`
+    if (isTauri) return `${PROXY_WS_BASE}${asrPath}`
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${location.host}/asr-proxy`
+    return `${protocol}//${location.host}${asrPath}`
   }
 
   const sendAudioChunk = (merged: Int16Array) => {
