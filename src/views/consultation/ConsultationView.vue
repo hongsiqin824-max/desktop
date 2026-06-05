@@ -267,14 +267,14 @@ const currentStep = computed(() => {
     const question = detail.findQuestion(detail.detailQuestionCategory.value)
     if (!question) return FLOW_STEPS['detail_question']
     const answeredTaCodes = new Set(detail.detailAnswers.value.map(a => a.taCode))
-    const filteredOptions = question.options.filter((opt: any) => {
+    const filteredOptions = question.options.filter((opt) => {
       if (!opt.excludeAfter) return true
       return !opt.excludeAfter.some((excluded: string) => answeredTaCodes.has(excluded))
     })
     return {
       id: 'detail_question' as StepIdType,
       doctorText: question.doctorText,
-      options: filteredOptions.map((opt: any) => ({ label: opt.label, nextStep: 'detail_question' as StepIdType, payload: undefined })) as IChatOption[],
+      options: filteredOptions.map((opt) => ({ label: opt.label, nextStep: 'detail_question' as StepIdType, payload: undefined })) as IChatOption[],
       isFreeInput: question.isFreeInput ?? false, isEnd: false,
     }
   }
@@ -622,7 +622,7 @@ const buildFallbackQuestion = (): string => {
 
     const question = detail.findQuestion(detail.detailQuestionCategory.value)
     if (question) {
-      const labels = question.options.map((opt: any) => opt.label).join('、')
+      const labels = question.options.map((opt) => opt.label).join('、')
       return `您说的我没太理解，${question.doctorText.replace(/如果不太理解.*$/, '')}您可以直接说：${labels}。`
     }
     return '请您简单描述一下您的感受，我会帮您匹配到对应的选项。'
@@ -755,7 +755,7 @@ const onSubmitText = async (text: string) => {
     if (currentStepId.value === 'detail_question') {
       const question = detail.findQuestion(detail.detailQuestionCategory.value)
       currentDoctorText = question?.doctorText
-      llmOptions = (question?.options || step.options!).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+      llmOptions = (question?.options || step.options!).map((opt) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
 
       // 构建上下文提示：已记录的答案帮助 LLM 理解当前匹配方向
       const recordedLabels = detail.detailAnswers.value.map(a => a.label).filter(Boolean)
@@ -763,7 +763,7 @@ const onSubmitText = async (text: string) => {
         contextHint = `用户已记录：${recordedLabels.join('、')}`
       }
     } else {
-      llmOptions = (step.options as any[]).map((opt: any) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+      llmOptions = (step.options!).map((opt) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
     }
 
     if (clarificationCandidates.value.length >= 2) {
@@ -821,7 +821,7 @@ const onSubmitText = async (text: string) => {
       const filterOptions = currentStepId.value === 'detail_question'
         ? (detail.findQuestion(detail.detailQuestionCategory.value)?.options || [])
         : (step.options || [])
-      const candidates = optionResult.matchedLabels.filter(label => filterOptions.some((opt: any) => opt.label === label))
+      const candidates = optionResult.matchedLabels.filter(label => filterOptions.some((opt) => opt.label === label))
       if (candidates.length >= 2) { clarificationCandidates.value = candidates; await doctorSay(optionResult.clarificationQuestion); return }
     }
   }
