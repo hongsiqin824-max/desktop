@@ -13,6 +13,7 @@ import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultation
 import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput, IDetailAnswer } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
 import { generateMockSyndromeOutput, mergeSeverityDuplicates, getCategoryTitle } from '@/data/syndromeOutput'
+import { submitConsultation } from '@/api/consultation'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
 import type { MeridianCodeType } from '@/types/meridian'
@@ -510,11 +511,21 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   }
   if (stepId === 'self_feature_summary') text = selfFeature.getSummaryText()
   if (stepId === 'syndrome_output') {
-    const output = generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
-    syndromeOutputData.value = output
-    consultationStore.setSyndromeOutput(output)
     consultationStore.endConsultation()
     consultationStore.finalizeBackendPayload()
+
+    // 尝试从辨证后台获取真实结果，失败时降级为 mock 数据
+    const payload = consultationStore.exportBackendPayload()
+    let output: ISyndromeOutput
+    try {
+      const result = await submitConsultation(payload)
+      output = result ?? generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
+    } catch {
+      output = generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
+    }
+
+    syndromeOutputData.value = output
+    consultationStore.setSyndromeOutput(output)
     text = '好的，根据您提供的所有信息，辨证分析已经完成，以下是您的辨证分析报告：'
   }
 
