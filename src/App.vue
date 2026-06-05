@@ -1,15 +1,37 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
-import { onMounted, onUnmounted } from 'vue'
+import { RouterView, useRouter, useRoute } from 'vue-router'
+import { onMounted, onUnmounted, computed, watch } from 'vue'
 import { useTTSStore } from '@/stores/global/tts'
+import { useConsultationStore } from '@/stores/consultation'
 
+const router = useRouter()
+const route = useRoute()
 const ttsStore = useTTSStore()
+const consultationStore = useConsultationStore()
 
 /** 全局跳过按钮点击：先标记"全局跳过"，再停止 TTS */
 const onGlobalSkip = () => {
   ttsStore.markGlobalSkip()
   ttsStore.stop()
 }
+
+/** 返回首页按钮：仅在启动页和首页之外的页面显示 */
+const showHomeBtn = computed(() => {
+  const path = route.path
+  return path !== '/' && path !== '/welcome'
+})
+
+/** 返回首页：停止 TTS、重置问诊数据、跳转 */
+const goHome = () => {
+  ttsStore.stop()
+  consultationStore.reset()
+  router.push('/welcome')
+}
+
+/** 路由切换时自动停止 TTS（防止朗读泄漏到下一页） */
+watch(() => route.path, () => {
+  ttsStore.stop()
+})
 
 // 动态计算缩放比例，使 1080×1920 的容器适配任意窗口大小
 const DESIGN_W = 1080
@@ -32,6 +54,16 @@ onUnmounted(() => {
 
 <template>
   <div class="app-container">
+    <!-- 全局返回首页按钮 -->
+    <button
+      v-if="showHomeBtn"
+      class="global-home-btn"
+      @click="goHome"
+      title="返回首页"
+    >
+      🏠
+    </button>
+
     <RouterView />
 
     <!-- 全局跳过按钮：TTS 朗读时始终显示在右下角 -->

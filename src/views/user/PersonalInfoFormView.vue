@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
 import type { GenderType } from '@/types/user'
 import ValidationAlert from './components/ValidationAlert.vue'
@@ -31,6 +31,11 @@ onMounted(async () => {
 
 onUnmounted(() => {
   ttsStore.stop()
+  stopSpeech()
+})
+
+/** 路由离开前确保麦克风释放（双重保障） */
+onBeforeRouteLeave(() => {
   stopSpeech()
 })
 
