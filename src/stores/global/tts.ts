@@ -19,7 +19,7 @@ const TTS_SAMPLE_RATE = 24000
 
 const VOICE_MAP: Record<PersonaType, string> = {
   nurse: 'Cherry',
-  doctor: 'qwen-tts-vc-tcmvoice-voice-20260527162848169-c755',
+  doctor: 'qwen-tts-vc-tcmvoice-voice-20260604151303931-5e41',
 }
 
 const PERSONA_CHARS_PER_SEC: Record<PersonaType, number> = {
