@@ -13,9 +13,9 @@ use super::AppState;
 pub struct UserInfo {
     pub name: String,
     pub gender: String,
-    pub age: u32,
-    pub height: u32,
-    pub weight: u32,
+    pub age: Option<u32>,
+    pub height: Option<u32>,
+    pub weight: Option<u32>,
     pub phone: String,
 }
 

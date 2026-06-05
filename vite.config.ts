@@ -84,7 +84,7 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
-        '/consultation': {
+        '/consultation/submit': {
           target: 'http://localhost:1420',
           changeOrigin: true,
         },
