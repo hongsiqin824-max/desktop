@@ -4,6 +4,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PersonaType } from '@/types/consultation'
+import { PROXY_WS_BASE } from '@/config/proxy'
 
 export type { PersonaType }
 
@@ -245,7 +246,7 @@ export const useTTSStore = defineStore('globalTTS', () => {
       // Tauri 走 Rust 代理，浏览器走 Vite proxy
       const isTauri = !!window.__TAURI__
       const wsBase = isTauri
-        ? 'ws://localhost:1420'
+        ? PROXY_WS_BASE
         : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`
       ws = new WebSocket(`${wsBase}${WS_PATH_MAP[persona]}`)
     } catch {
