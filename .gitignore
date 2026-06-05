@@ -40,3 +40,10 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Eval test reports
+eval/results-*.json
+eval/report-*.txt
+
+# Internal documents
+相关文件/

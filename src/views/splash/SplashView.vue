@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import './styles/SplashView.css'
 
 const router = useRouter()
 const progress = ref(0)
+let timer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
   // 模拟加载进度（缩短为1秒快速过渡）
@@ -12,16 +13,24 @@ onMounted(() => {
   const interval = 30
   const step = (100 / (duration / interval))
 
-  const timer = setInterval(() => {
+  timer = setInterval(() => {
     progress.value += step
     if (progress.value >= 100) {
       progress.value = 100
-      clearInterval(timer)
+      clearInterval(timer!)
+      timer = null
       setTimeout(() => {
         router.push('/welcome')
       }, 200) // 加载满后短暂停顿跳转
     }
   }, interval)
+})
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 })
 </script>
 
