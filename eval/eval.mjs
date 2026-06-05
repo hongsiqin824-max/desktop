@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // LLM 选项匹配评测脚本
 // 用法: node eval/eval.mjs [model] [--dry-run]
-// 示例: node eval/eval.mjs qwen-turbo
+// 示例: node eval/eval.mjs qwen3.7-max
 
 import { readFileSync, existsSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -12,7 +12,7 @@ const projectRoot = join(__dirname, '..')
 
 // ── 配置 ──
 const BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-const DEFAULT_MODEL = 'qwen-turbo'
+const DEFAULT_MODEL = 'qwen3.7-max'
 const DELAY_MS = 400
 const TIMEOUT_MS = 15000
 
