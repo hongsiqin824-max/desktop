@@ -23,9 +23,13 @@ pub async fn start_proxy_server(api_key: String) {
         .with_state(api_key);
 
     let addr = "127.0.0.1:1420";
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("[代理服务器] 端口 1420 被占用，请关闭占用程序后重试");
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[代理服务器] 端口 {} 被占用: {}，请关闭占用程序后重启应用", addr, e);
+            std::process::exit(1);
+        }
+    };
     println!("[代理服务器] 已启动: http://{}", addr);
     axum::serve(listener, app).await.expect("[代理服务器] 运行异常");
 }
