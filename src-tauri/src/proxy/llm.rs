@@ -6,18 +6,17 @@ use axum::{
     Json,
 };
 use serde_json::Value;
+use super::AppState;
 
 const LLM_UPSTREAM: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
 pub async fn proxy_chat(
-    State(api_key): State<String>,
+    State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let client = reqwest::Client::new();
-
-    let resp = client
+    let resp = state.http_client
         .post(LLM_UPSTREAM)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {}", state.api_key))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()

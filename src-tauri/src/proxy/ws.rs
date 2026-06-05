@@ -11,6 +11,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite};
+use super::AppState;
 
 // ── 三个路由入口，各自指向不同的阿里云模型 ──
 
@@ -23,28 +24,28 @@ const TTS_DOCTOR_UPSTREAM: &str =
 
 pub async fn proxy_asr(
     ws: WebSocketUpgrade,
-    State(api_key): State<String>,
+    State(state): State<AppState>,
 ) -> Response {
     ws.on_upgrade(move |socket| {
-        proxy_ws(socket, api_key, ASR_UPSTREAM, "ASR")
+        proxy_ws(socket, state.api_key, ASR_UPSTREAM, "ASR")
     })
 }
 
 pub async fn proxy_tts_nurse(
     ws: WebSocketUpgrade,
-    State(api_key): State<String>,
+    State(state): State<AppState>,
 ) -> Response {
     ws.on_upgrade(move |socket| {
-        proxy_ws(socket, api_key, TTS_NURSE_UPSTREAM, "TTS-护士")
+        proxy_ws(socket, state.api_key, TTS_NURSE_UPSTREAM, "TTS-护士")
     })
 }
 
 pub async fn proxy_tts_doctor(
     ws: WebSocketUpgrade,
-    State(api_key): State<String>,
+    State(state): State<AppState>,
 ) -> Response {
     ws.on_upgrade(move |socket| {
-        proxy_ws(socket, api_key, TTS_DOCTOR_UPSTREAM, "TTS-医生")
+        proxy_ws(socket, state.api_key, TTS_DOCTOR_UPSTREAM, "TTS-医生")
     })
 }
 
