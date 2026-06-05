@@ -228,7 +228,7 @@ const submitData = () => {
   <div class="form-view">
     <!-- 常驻上半屏：中医助理数字人（键盘弹出时隐藏以腾出空间） -->
     <div class="user-assistant-section" v-show="!showKeyboard">
-      <img class="user-assistant-img" src="@/assets/assistant.png" alt="中医助理" />
+      <img class="user-assistant-img" src="@/assets/assistant.webp" alt="中医助理" />
     </div>
 
     <!-- 数字人助理对话气泡（含内嵌语音按钮） -->

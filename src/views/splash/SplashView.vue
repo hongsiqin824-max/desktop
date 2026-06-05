@@ -38,14 +38,14 @@ onUnmounted(() => {
   <div class="splash-view">
     <!-- 顶部 LOGO 与 品牌名 -->
     <div class="brand-section">
-      <img class="logo" src="@/assets/logo.png" alt="Logo" />
+      <img class="logo" src="@/assets/logo.webp" alt="Logo" />
       <div class="brand-divider"></div>
       <h1 class="brand-name">中医智能问诊系统</h1>
     </div>
 
     <!-- 中部莲花绽放动画 -->
     <div class="lotus-section">
-      <img class="lotus-img" src="@/assets/lotus.png" alt="Lotus" />
+      <img class="lotus-img" src="@/assets/lotus.webp" alt="Lotus" />
     </div>
 
     <!-- 底部横向加载进度条 -->

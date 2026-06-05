@@ -102,7 +102,7 @@ pub async fn submit(
 ) -> Result<Json<ConsultationSubmitResponse>, (axum::http::StatusCode, String)> {
     // 1. 打印日志（开发调试用）
     println!("[问诊提交] 收到数据:");
-    println!("  用户: {} ({}, {}岁)", payload.user_info.name, payload.user_info.gender, payload.user_info.age);
+    println!("  用户: {} ({}, {:?}岁)", payload.user_info.name, payload.user_info.gender, payload.user_info.age);
     println!("  主症: {}", payload.main_symptom);
     println!("  严重程度: {:?}", payload.severity_level);
     println!("  舌脉代码: {}", if payload.tongue_pulse_codes.is_some() { "有" } else { "无" });

@@ -892,7 +892,7 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
       <img
         v-else
         class="doctor-img"
-        src="@/assets/doctor.png"
+        src="@/assets/doctor.webp"
         alt="老中医师"
       />
       <div class="doctor-badge">
@@ -927,9 +927,9 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
         :class="msg.role"
       >
         <!-- 医生头像 -->
-        <img v-if="msg.role === 'doctor'" class="chat-avatar" src="@/assets/doctor.png" alt="老中医师" />
+        <img v-if="msg.role === 'doctor'" class="chat-avatar" src="@/assets/doctor.webp" alt="老中医师" />
         <!-- 护士头像 -->
-        <img v-else-if="msg.role === 'nurse'" class="chat-avatar" src="@/assets/assistant.png" alt="护士" />
+        <img v-else-if="msg.role === 'nurse'" class="chat-avatar" src="@/assets/assistant.webp" alt="护士" />
         <!-- 用户头像 -->
         <div v-else class="chat-avatar-user">👤</div>
 
@@ -1018,7 +1018,7 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
 
       <!-- 医生思考中 / 打字中 -->
       <div v-if="isTyping" class="chat-msg doctor">
-        <img class="chat-avatar" src="@/assets/doctor.png" alt="老中医师" />
+        <img class="chat-avatar" src="@/assets/doctor.webp" alt="老中医师" />
         <div v-if="llmIsLoading" class="chat-bubble-doctor thinking-bubble">
           <span class="thinking-icon">🤔</span>
           <span class="thinking-text">正在分析您的描述…</span>

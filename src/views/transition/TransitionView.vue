@@ -33,7 +33,7 @@ onMounted(() => {
   <div class="transition-view">
     <!-- 数字人圆形头像（带呼吸光晕） -->
     <div class="transition-assistant-section">
-      <img class="transition-assistant-img" src="@/assets/doctor.png" alt="老中医师" />
+      <img class="transition-assistant-img" src="@/assets/doctor.webp" alt="老中医师" />
     </div>
 
     <!-- 过渡文案 -->

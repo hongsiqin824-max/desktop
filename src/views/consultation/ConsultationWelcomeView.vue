@@ -46,7 +46,7 @@ const onContinueClick = () => {
   <div class="welcome-view">
     <!-- 上半屏：护士数字人 -->
     <div class="assistant-section">
-      <img class="assistant-img" src="@/assets/assistant.png" alt="护士" />
+      <img class="assistant-img" src="@/assets/assistant.webp" alt="护士" />
     </div>
 
     <!-- 下半屏：气泡 -->
