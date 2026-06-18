@@ -1,0 +1,194 @@
+/* 登录页面样式 */
+
+.login-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120px 80px 80px;
+  background: linear-gradient(180deg, var(--theme-bg) 0%, var(--theme-bg-warm) 100%);
+  overflow-y: auto;
+}
+
+/* ── 品牌区域 ───────────────────────────────────────── */
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.login-brand-icon {
+  font-size: 80px;
+  margin-bottom: 16px;
+}
+
+.login-brand-title {
+  font-size: 56px;
+  font-weight: bold;
+  color: var(--theme-text-main);
+  letter-spacing: 4px;
+}
+
+.login-brand-subtitle {
+  font-size: 32px;
+  color: var(--theme-text-muted);
+  margin-top: 12px;
+}
+
+/* ── 助理形象 ───────────────────────────────────────── */
+
+.login-assistant {
+  margin-bottom: 50px;
+}
+
+.login-assistant-img {
+  width: 320px;
+  height: 320px;
+  object-fit: contain;
+  border-radius: 50%;
+  box-shadow: var(--shadow-medium);
+  background-color: var(--theme-surface);
+}
+
+/* ── 登录表单 ───────────────────────────────────────── */
+
+.login-form {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* 输入字段 */
+.login-field {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: var(--theme-surface);
+  border: 2px solid var(--theme-border);
+  border-radius: 24px;
+  padding: 24px 32px;
+  transition: border-color 0.2s;
+}
+
+.login-field:focus-within {
+  border-color: var(--input-border-focus);
+}
+
+/* 虚拟键盘激活的字段高亮 */
+.login-field.active {
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 4px rgba(86, 130, 3, 0.15);
+}
+
+/* 键盘打开时隐藏登录按钮，节省空间 */
+.login-form.keyboard-open .login-btn {
+  display: none;
+}
+
+.login-field-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.login-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 40px;
+  color: var(--input-text);
+  min-width: 0;
+}
+
+.login-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* 密码输入框隐藏密码切换 */
+.login-input[type="password"] {
+  letter-spacing: 4px;
+}
+
+/* 验证码字段 */
+.login-field-captcha {
+  padding-right: 16px;
+}
+
+.login-input-captcha {
+  max-width: 360px;
+}
+
+.captcha-image-wrapper {
+  flex-shrink: 0;
+  width: 280px;
+  height: 72px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid var(--theme-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-gray-100);
+  transition: opacity 0.2s;
+}
+
+.captcha-image-wrapper:hover {
+  opacity: 0.8;
+}
+
+.captcha-image-wrapper.is-loading {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.captcha-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.captcha-placeholder {
+  font-size: 24px;
+  color: var(--theme-text-muted);
+}
+
+/* ── 错误提示 ───────────────────────────────────────── */
+
+.login-error {
+  text-align: center;
+  font-size: 32px;
+  color: var(--theme-danger);
+  padding: 16px;
+  background-color: rgba(230, 90, 90, 0.08);
+  border-radius: 16px;
+}
+
+/* ── 登录按钮 ───────────────────────────────────────── */
+
+.login-btn {
+  width: 100%;
+  height: 120px;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-size: 48px;
+  font-weight: bold;
+  border: none;
+  border-radius: 60px;
+  box-shadow: var(--btn-shadow);
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.2s;
+  letter-spacing: 8px;
+}
+
+.login-btn:active {
+  transform: scale(0.98);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

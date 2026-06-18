@@ -88,6 +88,39 @@ export default defineConfig(({ mode }) => {
           target: 'http://localhost:1420',
           changeOrigin: true,
         },
+        // ── 后端业务接口代理（内网开发地址）──
+        '/mp': {
+          target: 'http://39.106.163.181:8092',
+          changeOrigin: true,
+        },
+        // ── 答案保存接口代理 ──
+        '/answersheet': {
+          target: 'http://39.106.163.181:8092',
+          changeOrigin: true,
+        },
+        // ── 后端认证接口代理（验证码 + 登录）──
+        '/verifyCode': {
+          target: 'http://39.106.163.181:8092',
+          changeOrigin: true,
+          cookieDomainRewrite: '',
+        },
+        '/doLogin': {
+          target: 'http://39.106.163.181:8092',
+          changeOrigin: true,
+          cookieDomainRewrite: '',
+        },
+        // ── 后端问卷模型接口代理──
+        '/questionModel': {
+          target: 'http://39.106.163.181:8092',
+          changeOrigin: true,
+          cookieDomainRewrite: '',
+        },
+        // ── 第三方舌象 AI 分析服务（脉至语）──
+        '/tongue-ai': {
+          target: 'https://aitongue.maizhiyu.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/tongue-ai/, '/api/app'),
+        },
       },
     },
   }

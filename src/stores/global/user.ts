@@ -21,7 +21,7 @@ export const useUserStore = defineStore('globalUser', () => {
 
   const userInfo = ref<IUserInfo>(initialInfo)
 
-  // 模拟判定新老用户，默认 false
+  // 新老用户标识（由 createSession 接口返回的 isNewCustomer 设置）
   const isNewUser = ref<boolean>(false)
 
   const setUserInfo = (info: Partial<IUserInfo>) => {
@@ -30,30 +30,15 @@ export const useUserStore = defineStore('globalUser', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userInfo.value))
   }
 
-  const checkUserStatus = (phone: string) => {
-    // 使用 localStorage 模拟后端数据库记录新老用户
-    const registeredPhonesStr = localStorage.getItem('registered_phones') || '[]'
-    let registeredPhones: string[] = []
-    try {
-      registeredPhones = JSON.parse(registeredPhonesStr)
-    } catch {
-      registeredPhones = []
-    }
-
-    if (registeredPhones.includes(phone)) {
-      isNewUser.value = false // 手机号已存在，老用户
-    } else {
-      isNewUser.value = true // 手机号不存在，新用户
-      // 将新手机号加入记录
-      registeredPhones.push(phone)
-      localStorage.setItem('registered_phones', JSON.stringify(registeredPhones))
-    }
+  /** 设置新老用户标识（来自 createSession 接口返回值） */
+  const setIsNewUser = (val: boolean) => {
+    isNewUser.value = val
   }
 
   return {
     userInfo,
     isNewUser,
     setUserInfo,
-    checkUserStatus
+    setIsNewUser
   }
 })

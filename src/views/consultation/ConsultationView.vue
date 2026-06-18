@@ -3,6 +3,7 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
 import { useUIStore } from '@/stores/global/ui'
+import { useSessionStore } from '@/stores/global/session'
 import { useConsultationStore } from '@/stores/consultation'
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { useTTSStore } from '@/stores/global/tts'
@@ -13,9 +14,12 @@ import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultation
 import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput, IDetailAnswer } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
 import { generateMockSyndromeOutput, mergeSeverityDuplicates, getCategoryTitle } from '@/data/syndromeOutput'
-import { submitConsultation } from '@/api/consultation'
+import { fetchRequiredQuestions, fetchFollowUpQuestions, fetchProgramQuestions, batchSaveAnswers, computeAnswerSheet, saveAnswerCalcVals, getComputeAnswerRes } from '@/api/consultationDetail'
+import { ZONE_PREFIX_MAP } from '@/data/selfFeature'
+import type { ICalcVal } from '@/api/consultationDetail'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
+import { useTonguePulseCapture } from '@/composables/useTonguePulseCapture'
 import type { MeridianCodeType } from '@/types/meridian'
 import MeridianBodyView from '@/components/business/meridian/MeridianBodyView.vue'
 
@@ -24,10 +28,67 @@ import './styles/ConsultationView.css'
 // ── 用户信息 ─────────────────────────────────────────────────
 const userStore = useUserStore()
 const uiStore = useUIStore()
+const sessionStore = useSessionStore()
 const consultationStore = useConsultationStore()
 const router = useRouter()
 const userName = computed(() => userStore.userInfo.name || '朋友')
 const userInfo = computed(() => userStore.userInfo)
+
+/** 清理问题名称：去掉"问"前缀和"情况"/"状况"后缀，避免话术冗余 */
+const cleanQuestionName = (name: string): string => {
+  return name
+    .replace(/^问/, '')
+    .replace(/情况$/, '')
+    .replace(/状况$/, '')
+}
+
+/** 获取有效举例文本：优先用选项名称，如果没有有效选项则用 kqihIllustrate 兜底 */
+const getQuestionIllustrate = (q: { kqihIllustrate: string; kytOptions: { koihOption: string }[] }): string => {
+  const labels = q.kytOptions
+    .map(opt => opt.koihOption)
+    .filter(opt => opt !== '暂无' && opt !== '无以上症状')
+    .slice(0, 4)
+  if (labels.length > 0) {
+    return labels.join('、')
+  }
+  if (q.kqihIllustrate && q.kqihIllustrate !== '暂无') {
+    return q.kqihIllustrate
+  }
+  return ''
+}
+
+/** 统一生成医生问话（清理名称 + 过滤无效举例 + 多模板适配） */
+const buildDoctorQuestionText = (q: { kqihName: string; kqihIllustrate: string; kytOptions: { koihOption: string }[] }): string => {
+  const cleanName = cleanQuestionName(q.kqihName)
+  const illustrate = getQuestionIllustrate(q)
+  const exampleText = illustrate ? `比如${illustrate}` : ''
+  const name = q.kqihName
+
+  // 0. 多症状列举：kqihName 本身就是多个症状的枚举（含"、"或"，"）
+  //    → 直接问"是否有...的情况"，不加"比如"（因为名称本身就是选项的列举）
+  if (name.includes('、') || name.includes('，')) {
+    return `请问您有${cleanName}的情况吗？`
+  }
+
+  // 1. 颜色/色泽/面色 → "是什么样的"
+  if (name.includes('颜色') || name.includes('色泽') || name.includes('面色')) {
+    return `请问您的${cleanName}是什么样的？${exampleText}`
+  }
+  // 2. 频率/次数 → "频率如何"
+  if (name.includes('频率') || name.includes('次数')) {
+    return `请问${cleanName}的频率如何？${exampleText}`
+  }
+  // 3. 属性/状态类（睡眠、月经、食欲等）→ "怎么样"
+  if (/睡眠|月经|经期|食欲|饮食|口味|口渴|小便|大便|汗|情绪|精神|体力|精力/.test(name)) {
+    return `请问您的${cleanName}怎么样？${exampleText}`
+  }
+  // 4. 形态/表现类（大便形态、头痛表现等）→ "是什么样的"
+  if (/形态|表现|舌象|舌苔|舌质/.test(name)) {
+    return `请问您的${cleanName}是什么样的？${exampleText}`
+  }
+  // 5. 默认（症状/证型类：阴虚、血热、寒热等）→ "有...的情况吗"
+  return `请问您有${cleanName}的情况吗？${exampleText}`
+}
 
 /** 倍速切换：1 → 1.25 → 1.5 → 1 循环 */
 const cycleSpeed = () => {
@@ -46,6 +107,17 @@ const currentSymptom = ref('症状')
 const detailBranch = ref<string>('')
 const detailQuestionQueue = ref<string[]>([])
 const detailIsFirstQuestion = ref<boolean>(true)
+
+// ── API 驱动的详细问诊状态 ──────────────────────────────────────
+/** 当前选中的父选项（等待用户选择子选项时暂存） */
+const pendingParentOption = ref<{ questionId: string; optionId: string; label: string; category: string; questionText: string } | null>(null)
+/** 当前展示的子选项（较轻/较重 或 其他类型的子选项） */
+const apiChildOptions = ref<{ label: string; koihId: string; koihOptionCode?: string; semanticDesc?: string }[]>([])
+
+/** 判断子选项是否为程度类（较轻/较重） */
+const isSeverityChildren = (children: { label: string }[]): boolean => {
+  return children.length >= 2 && children.every(c => c.label === '较轻' || c.label === '较重')
+}
 
 // ── 舌脉采集状态 ─────────────────────────────────────────────
 const isCapturing = ref(false)
@@ -249,9 +321,51 @@ const selfFeature = useSelfFeature({
   doctorSay, scrollToBottom, confirmLastUserMessage,
 })
 
+// ── 舌脉采集 composable（真实 API 链路）──
+const tonguePulseCapture = useTonguePulseCapture()
+
 // ── 步骤计算 ─────────────────────────────────────────────────
 const currentStep = computed(() => {
   if (currentStepId.value === 'detail_question') {
+    // ── API 驱动模式：后端有问题列表时使用 ──
+    const apiQuestion = consultationStore.getCurrentQuestion()
+
+    if (apiQuestion) {
+      // 子选项模式：用户选了有子选项的项，正在追问
+      if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+        const isSeverity = isSeverityChildren(apiChildOptions.value)
+        const childLabels = apiChildOptions.value.map(c => c.label).join('、')
+        const doctorText = isSeverity
+          ? `请问这个情况的程度是较轻还是较重？`
+          : `请问以下哪种更符合您的情况？您可以直接说：${childLabels}`
+        return {
+          id: 'detail_question' as StepIdType,
+          doctorText,
+          options: apiChildOptions.value.map((child) => ({
+            label: child.label,
+            nextStep: 'detail_question' as StepIdType,
+            payload: undefined,
+          })) as IChatOption[],
+          isFreeInput: true, isEnd: false,
+        }
+      }
+
+      // 主问题模式：统一使用 buildDoctorQuestionText 生成话术
+      const doctorText = buildDoctorQuestionText(apiQuestion)
+
+      return {
+        id: 'detail_question' as StepIdType,
+        doctorText,
+        options: apiQuestion.kytOptions.map((opt) => ({
+          label: opt.koihOption,
+          nextStep: 'detail_question' as StepIdType,
+          payload: undefined,
+        })) as IChatOption[],
+        isFreeInput: true, isEnd: false,
+      }
+    }
+
+    // ── 本地降级模式：API 没有数据时使用原有逻辑 ──
     if (detail.detailSeverityPending.value) {
       return {
         id: 'detail_question' as StepIdType,
@@ -347,6 +461,15 @@ const processLLMResult = (result: IIntentResult): boolean => {
     if (mapped) {
       currentSymptom.value = mapped
       consultationStore.setMainSymptom(mapped)
+      // 通过症状名映射到真实 kqmId（如 "感冒" → "588282635315314688"）
+      const kqmId = sessionStore.findModelIdBySymptom(mapped)
+      if (kqmId) {
+        consultationStore.setQuestionModel(kqmId)
+        if (import.meta.env.DEV) console.log(`[问诊] 症状"${mapped}" → kqmId="${kqmId}"`)
+      } else {
+        consultationStore.setQuestionModel(mapped)
+        if (import.meta.env.DEV) console.warn(`[问诊] 未找到"${mapped}"对应的模型，暂存症状名`)
+      }
     }
     if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
     if (result.severity === 'severe') {
@@ -366,6 +489,15 @@ const processLLMResult = (result: IIntentResult): boolean => {
     if (mapped) {
       currentSymptom.value = mapped
       consultationStore.setMainSymptom(mapped)
+      // 通过症状名映射到真实 kqmId（如 "失眠" → "588282635315314688"）
+      const kqmId = sessionStore.findModelIdBySymptom(mapped)
+      if (kqmId) {
+        consultationStore.setQuestionModel(kqmId)
+        if (import.meta.env.DEV) console.log(`[问诊] 症状"${mapped}" → kqmId="${kqmId}"`)
+      } else {
+        consultationStore.setQuestionModel(mapped)
+        if (import.meta.env.DEV) console.warn(`[问诊] 未找到"${mapped}"对应的模型，暂存症状名`)
+      }
     }
     if (UNSUPPORTED_SYMPTOMS.has(currentSymptom.value)) { goToStep('end_unsupported_symptom'); return true }
     if (result.severity === 'severe') {
@@ -447,8 +579,7 @@ watch(currentStepId, () => {
 })
 
 // ── 采集时序参数 ─────────────────────────────────────────────
-const CAPTURE_READING_DELAY = 2000
-const CAPTURE_SUCCESS_DELAY = 800
+// 注意：采集步骤已改为真实 API 调用（useTonguePulseCapture），不再使用固定延时
 
 // ── 处理流程跳转 ─────────────────────────────────────────────
 const goToStep = async (stepId: StepIdType, symptom?: string) => {
@@ -472,6 +603,16 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   }
 
   currentStepId.value = stepId
+
+  // ── 关键阶段衔接日志 ──
+  if (stepId === 'detail_summary') {
+    console.log('[详细问诊] 📋 进入汇总确认页')
+  } else if (stepId === 'detail_done') {
+    console.log('[详细问诊] ✅ 用户确认汇总 → 即将进入自选症状（3D模型）')
+  } else if (stepId === 'self_feature_intro') {
+    console.log('[详细问诊] 🧍 进入自选症状（3D经脉模型）')
+  }
+
   const step = FLOW_STEPS[stepId]
   let text = step.doctorText
 
@@ -479,30 +620,69 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     text = `请问您的【${currentSymptom.value}】严重吗？`
   }
   if (stepId === 'analysis_review') {
-    const data = MOCK_ANALYSIS[currentSymptom.value] ?? MOCK_ANALYSIS['感冒']!
+    // 优先使用真实采集数据（composable 已存入 store），降级使用 MOCK_ANALYSIS
+    const realAnalysis = consultationStore.analysisData
+    const mockData = MOCK_ANALYSIS[currentSymptom.value] ?? MOCK_ANALYSIS['感冒']!
+    const data = realAnalysis ?? mockData
     analysisData.value = data
-    consultationStore.setAnalysisData(data)
+    if (!realAnalysis) {
+      consultationStore.setAnalysisData(data)
+    }
     text = `根据系统分析，我这边看到的情况如下，请您确认是否与您目前的状态相符：
 
 舌象分析：
-• 舌苔厚薄：${data.tongueCoating}
-• 舌苔颜色：${data.tongueCoatingColor}
-• 舌质颜色：${data.tongueColor}
-• 舌质大小：${data.tongueSize}
-• 舌下状态：${data.tongueBottom}
+• 舌苔厚薄：${data.tongueCoating || '未检测到'}
+• 舌苔颜色：${data.tongueCoatingColor || '未检测到'}
+• 舌质颜色：${data.tongueColor || '未检测到'}
+• 舌质大小：${data.tongueSize || '未检测到'}
 
 脉象分析：
 • 脉象特征：${data.pulseType}
 • 脉搏次数：${data.pulseRate}次/分`
   }
   if (stepId === 'analysis_normal') text = generateResponse('ANALYSIS_CONFIRM_NORMAL', { symptom: currentSymptom.value })
-  if (stepId === 'detail_transition') text = generateResponse('DETAIL_TRANSITION', { symptom: currentSymptom.value })
+  if (stepId === 'detail_transition') {
+    text = generateResponse('DETAIL_TRANSITION', { symptom: currentSymptom.value })
+    // 调用接口 7：获取必问问题（每次都重新获取，确保数据最新）
+    if (import.meta.env.DEV) {
+      console.log('[详细问诊] 进入 detail_transition 步骤:', {
+        answerSheetId: consultationStore.answerSheetId,
+        questionModel: consultationStore.questionModel,
+        previousQuestionsLength: consultationStore.requiredQuestions.length,
+      })
+    }
+    if (consultationStore.answerSheetId) {
+      try {
+        const result = await fetchRequiredQuestions(
+          consultationStore.answerSheetId,
+          consultationStore.questionModel,
+        )
+        consultationStore.setRequiredQuestions(result.questionList)
+        if (import.meta.env.DEV) {
+          console.log('[详细问诊] 必问问题已更新:', result.questionList.length, '个问题')
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('[详细问诊] 获取必问问题失败，将使用本地题库降级:', e)
+        }
+        // API 失败不阻断流程，继续使用本地题库
+      }
+    }
+  }
   if (stepId === 'detail_question' && detailIsFirstQuestion.value) {
-    const firstCategory = detail.initFirstQuestion(currentSymptom.value)
-    text = detail.getFirstQuestionText(currentSymptom.value, firstCategory)
+    // API 模式：使用 currentStep 生成的 doctorText
+    if (consultationStore.getCurrentQuestion()) {
+      text = currentStep.value.doctorText || ''
+    } else {
+      // 本地降级模式
+      const firstCategory = detail.initFirstQuestion(currentSymptom.value)
+      text = detail.getFirstQuestionText(currentSymptom.value, firstCategory)
+    }
   }
   if (stepId === 'detail_summary') {
+    console.log('[详细问诊] 📋 汇总数据:', detail.detailAnswers.value.length, '条答案')
     const summary = buildDetailSummary(detail.detailAnswers.value)
+    console.log('[详细问诊] 📋 汇总文本:', summary || '(空)')
     text = generateResponse('DETAIL_SUMMARY', { summary })
   }
   if (stepId === 'self_feature_intro') {
@@ -514,14 +694,94 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     consultationStore.endConsultation()
     consultationStore.finalizeBackendPayload()
 
-    // 尝试从辨证后台获取真实结果，失败时降级为 mock 数据
-    const payload = consultationStore.exportBackendPayload()
+    // ── 保存经脉八维数值（接口 12）──
+    const calcVals = buildCalcVals()
+    if (calcVals.length > 0) {
+      try {
+        await saveAnswerCalcVals(consultationStore.answerSheetId, calcVals)
+      } catch (e) {
+        console.error('[经脉八维] ❌ 保存失败（不阻断流程）:', e)
+      }
+    } else {
+      console.log('[经脉八维] 无自选记录，跳过保存')
+    }
+
+    // ── 获取辨证结果：computeAnswerSheet（触发计算） + getComputeAnswerRes（取结果）──
     let output: ISyndromeOutput
+    const mockOutput = () => generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
+
+    // 1. 触发后端计算
+    console.log('[辨证结果] 开始获取辨证结果...')
     try {
-      const result = await submitConsultation(payload)
-      output = result ?? generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
-    } catch {
-      output = generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
+      const computeResult = await computeAnswerSheet(consultationStore.answerSheetId)
+      console.log('[辨证结果] computeAnswerSheet 完成:', computeResult ? '有返回' : '无返回')
+    } catch (e) {
+      console.warn('[辨证结果] ⚠️ computeAnswerSheet 失败（继续尝试获取结果）:', e)
+    }
+
+    // 2. 获取计算结果
+    try {
+      const resData = await getComputeAnswerRes(consultationStore.answerSheetId)
+      const obj = resData.obj
+
+      // 从 kytFormulas 提取 F-code → 中文名映射
+      const fCodeMap: Record<string, string> = {}
+      if (obj?.kytFormulas?.length > 0) {
+        for (const f of obj.kytFormulas as any[]) {
+          if (f.kfName && /^F\d+$/.test(f.kfName) && f.kfNameCn) {
+            fCodeMap[f.kfName] = f.kfNameCn
+          }
+        }
+        console.log('[辨证结果] F-code 映射表:', fCodeMap)
+      }
+
+      // 解析 graphicList 中的辨证结论（并将 F-code 替换为中文名）
+      let syndromeConclusion: { key: string; val: string }[] = []
+      if (obj?.graphicList?.length > 0) {
+        const conclusionItem = obj.graphicList.find(g => g.value?.startsWith('['))
+        if (conclusionItem) {
+          try {
+            const parsed = JSON.parse(conclusionItem.value)
+            if (Array.isArray(parsed)) {
+              syndromeConclusion = parsed.map((item: any) => {
+                const code = String(item.key || '')
+                const cnName = fCodeMap[code]
+                // 显示格式：中文名 (F8) 或原始 code（若没有映射）
+                const displayKey = cnName ? `${cnName} (${code})` : code
+                return { key: displayKey, val: String(item.val || '') }
+              })
+            }
+            console.log('[辨证结果] 辨证结论解析成功:', syndromeConclusion)
+          } catch (e) {
+            console.warn('[辨证结果] ⚠️ 辨证结论 JSON 解析失败:', conclusionItem.value, e)
+          }
+        }
+      }
+
+      // 检查数据是否有效（至少有推荐方案或辨证结论）
+      const hasTuijian = obj?.tuijianList?.length > 0
+      const hasConclusion = syndromeConclusion.length > 0
+
+      if (hasTuijian || hasConclusion) {
+        output = {
+          isRealData: true,
+          userInfo: { name: obj.name, sex: obj.sex, age: obj.age, time: obj.time },
+          modelName: obj.modelName,
+          syndromeConclusion,
+          recommendations: obj.tuijianList || [],
+        }
+        console.log('[辨证结果] ✅ 使用真实 API 数据:', {
+          modelName: output.modelName,
+          结论数: syndromeConclusion.length,
+          推荐数: output.recommendations!.length,
+        })
+      } else {
+        console.warn('[辨证结果] ⚠️ API 返回数据为空，降级为 mock')
+        output = mockOutput()
+      }
+    } catch (e) {
+      console.error('[辨证结果] ❌ getComputeAnswerRes 失败，降级为 mock:', e)
+      output = mockOutput()
     }
 
     syndromeOutputData.value = output
@@ -544,30 +804,391 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     await doctorSay(text)
   }
 
-  // 代次变化（用户跳过）→ 不启动采集动画和自动推进
+  // 代次变化（用户跳过）→ 不启动采集和自动推进
   if (goToStepGeneration.value !== gen) return
 
-  // 启动采集动画
-  if (step.captureType && step.autoAdvance) {
-    const totalDelay = step.autoAdvance.delay
-    const captureDuration = totalDelay - CAPTURE_READING_DELAY - CAPTURE_SUCCESS_DELAY
-    captureStartTimerId.value = window.setTimeout(() => {
-      isCapturing.value = true; captureType.value = step.captureType!
-      captureProgress.value = 0; captureCompleted.value = false
-      const stepMs = 50; const progressStep = 100 / (captureDuration / stepMs) * speed
-      captureProgressIntervalId.value = window.setInterval(() => {
-        captureProgress.value += progressStep
-        if (captureProgress.value >= 100) {
-          captureProgress.value = 100; captureCompleted.value = true
-          if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
-        }
-      }, stepMs / speed)
-    }, CAPTURE_READING_DELAY / speed)
+  // ── 舌脉采集步骤：调用真实 API 链路（替代旧的模拟动画）──
+  // 采集步骤不再使用 autoAdvance，由 composable 控制流程推进
+  if (step.captureType) {
+    // 立即显示采集浮层
+    isCapturing.value = true
+    captureType.value = step.captureType
+    captureProgress.value = 0
+    captureCompleted.value = false
+
+    try {
+      if (stepId === 'tongue_top_intro') {
+        await tonguePulseCapture.stepTongueTop()
+        if (goToStepGeneration.value !== gen) return
+        captureCompleted.value = true
+        await new Promise(r => setTimeout(r, 500))
+        if (goToStepGeneration.value !== gen) return
+        isCapturing.value = false
+        goToStep('pulse_intro')  // 跳过舌底拍照，直接进入脉诊
+      } else if (stepId === 'pulse_intro') {
+        // 脉搏采集 + AI分析 + 问题获取 + 自动匹配（全自动）
+        await tonguePulseCapture.stepAnalyzeAndMatch()
+        if (goToStepGeneration.value !== gen) return
+        captureCompleted.value = true
+        await new Promise(r => setTimeout(r, 500))
+        if (goToStepGeneration.value !== gen) return
+        isCapturing.value = false
+        goToStep('pulse_done')
+      }
+    } catch (e) {
+      isCapturing.value = false
+      if (import.meta.env.DEV) {
+        console.error('[采集] 流程中断:', e)
+      }
+      // 采集失败时不自动跳转，等待用户操作（analysis_fail 选项可重新采集）
+      tonguePulseCapture.resetCapture()
+      // 显示错误提示
+      const errorMsg = e instanceof Error ? e.message : '采集过程出现错误'
+      await doctorSay(`${errorMsg}，请确认设备和网络正常后重新采集。`)
+    }
+    return  // 采集步骤不走下面的 autoAdvance 逻辑
   }
 
+  // 非采集步骤：保留原有的 autoAdvance 定时器逻辑
   if (step.autoAdvance) {
     autoAdvanceTimerId.value = window.setTimeout(() => { clearTimers(); goToStep(step.autoAdvance!.nextStep) }, step.autoAdvance.delay / speed)
   }
+}
+
+// ── 处理 analysis_review 确认：保存舌脉数据到后端 ──────────────────
+// 按钮点击和语音输入两条路径共用，确保无论用户通过哪种方式确认都能触发保存
+async function handleAnalysisConfirm() {
+  if (consultationStore.tongueReport && !consultationStore.tonguePulseSaved) {
+    try {
+      await tonguePulseCapture.stepSave()
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error('[保存] 舌脉答案保存失败:', e)
+      }
+      // 保存失败不阻断流程，继续推进
+    }
+  }
+}
+
+// ── API 驱动的详细问诊选项处理 ──────────────────────────────────
+// 处理用户选择（按钮或语音 LLM 分类后都调此函数）
+async function handleApiDetailOption(label: string, originalText?: string) {
+  const apiQuestion = consultationStore.getCurrentQuestion()
+  if (!apiQuestion) return
+
+  // ── 子选项模式：用户正在选择较轻/较重 ──
+  if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+    const selectedChild = apiChildOptions.value.find(c => c.label === label)
+    if (selectedChild) {
+      // 记录答案：父选项 ID + 子选项 ID（后端保存用）
+      consultationStore.addDetailSelectedAnswer({
+        questionId: pendingParentOption.value.questionId,
+        selectedOptionIds: [pendingParentOption.value.optionId, selectedChild.koihId],
+      })
+      // 同步到汇总显示用的 detailAnswers
+      detail.detailAnswers.value.push({
+        taCode: selectedChild.koihOptionCode || selectedChild.koihId,
+        label: `${pendingParentOption.value.label}(${selectedChild.label})`,
+        category: pendingParentOption.value.category,
+        questionText: pendingParentOption.value.questionText,
+      })
+    }
+    // 清除子选项状态
+    pendingParentOption.value = null
+    apiChildOptions.value = []
+    // 推进到下一题
+    await advanceApiQuestion()
+    return
+  }
+
+  // ── 主问题模式：用户选择了一个选项 ──
+  const selectedOption = apiQuestion.kytOptions.find(opt => opt.koihOption === label)
+  if (!selectedOption) {
+    // 未匹配到选项（用户说"没有"），跳过此题
+    await advanceApiQuestion()
+    return
+  }
+
+  if (selectedOption.koihHasChild === 1 && selectedOption.koihChildsOption.length > 0) {
+    const severityChildren = isSeverityChildren(selectedOption.koihChildsOption.map(c => ({ label: c.koihOption })))
+
+    // ── 程度类子选项（较轻/较重）：自动检测程度关键词，一步完成 ──
+    if (severityChildren) {
+      let autoSeverity: '较轻' | '较重' | null = null
+      if (originalText) {
+        if (/一点|轻微|不太|稍微|有点|轻度|不怎么|较轻/.test(originalText)) {
+          autoSeverity = '较轻'
+        } else if (/很|挺|比较|特别|严重|重度|蛮|较重/.test(originalText)) {
+          autoSeverity = '较重'
+        }
+      }
+
+      // 如果自动识别到程度，一步完成
+      if (autoSeverity) {
+        const child = selectedOption.koihChildsOption.find(c => c.koihOption === autoSeverity)
+        if (child) {
+          if (import.meta.env.DEV) {
+            console.log('[详细问诊] 自动识别程度:', autoSeverity, '一步完成记录')
+          }
+          consultationStore.addDetailSelectedAnswer({
+            questionId: apiQuestion.kqihId,
+            selectedOptionIds: [selectedOption.koihId, child.koihId],
+          })
+          // 同步到汇总显示用的 detailAnswers
+          detail.detailAnswers.value.push({
+            taCode: child.koihOptionCode || child.koihId,
+            label: `${selectedOption.koihOption}(${child.koihOption})`,
+            category: apiQuestion.kqihName,
+            questionText: buildDoctorQuestionText(apiQuestion),
+          })
+          await advanceApiQuestion()
+          return
+        }
+      }
+    }
+
+    // ── 设置子选项状态（程度类和通用类共用）──
+    pendingParentOption.value = {
+      questionId: apiQuestion.kqihId,
+      optionId: selectedOption.koihId,
+      label: selectedOption.koihOption,
+      category: apiQuestion.kqihName,
+      questionText: buildDoctorQuestionText(apiQuestion),
+    }
+    apiChildOptions.value = selectedOption.koihChildsOption.map(child => ({
+      label: child.koihOption,
+      koihId: child.koihId,
+      koihOptionCode: child.koihOptionCode,
+      semanticDesc: child.koihOpIllustrate || undefined,
+    }))
+
+    // ── 生成追问语并语音播报 ──
+    if (severityChildren) {
+      if (import.meta.env.DEV) {
+        console.log('[详细问诊] 程度类子选项，追问程度:', selectedOption.koihOption)
+      }
+      await doctorSay('请问这个情况的程度是较轻还是较重？')
+    } else {
+      const childLabels = apiChildOptions.value.map(c => c.label).join('、')
+      if (import.meta.env.DEV) {
+        console.log('[详细问诊] 通用子选项，追问:', selectedOption.koihOption, '→', childLabels)
+      }
+      await doctorSay(`请问以下哪种更符合您的情况？您可以直接说：${childLabels}`)
+    }
+    return
+  }
+
+  // 无子选项：直接记录答案并推进
+  consultationStore.addDetailSelectedAnswer({
+    questionId: apiQuestion.kqihId,
+    selectedOptionIds: [selectedOption.koihId],
+  })
+  // 同步到汇总显示用的 detailAnswers
+  detail.detailAnswers.value.push({
+    taCode: selectedOption.koihOptionCode || selectedOption.koihId,
+    label: selectedOption.koihOption,
+    category: apiQuestion.kqihName,
+    questionText: buildDoctorQuestionText(apiQuestion),
+  })
+  await advanceApiQuestion()
+}
+
+// ── 累加自选症状的经脉八维数值 ──────────────────────────────────
+function buildCalcVals(): ICalcVal[] {
+  const records = selfFeature.selfFeatureRecords.value
+  console.log('[经脉八维] 开始累加，共', records.length, '条自选记录')
+
+  const accumulator = new Map<string, number>()
+
+  for (const r of records) {
+    if (!r.meridianCode || !r.symptomCategory || !r.symptomBaseCode) {
+      console.warn('[经脉八维] ⚠️ 跳过不完整记录:', r)
+      continue
+    }
+
+    // 经脉辨证码: meridianCode + symptomCategory (如 JM1 + K → JM1K)
+    const meridianCode = `${r.meridianCode}${r.symptomCategory}`
+    // 八维辨证码: zonePrefix + symptomBaseCode (如 S + RT → SRT)
+    const zonePrefix = ZONE_PREFIX_MAP[r.locationZone] || 'S'
+    const eightCode = `${zonePrefix}${r.symptomBaseCode}`
+
+    accumulator.set(meridianCode, (accumulator.get(meridianCode) || 0) + r.severity)
+    accumulator.set(eightCode, (accumulator.get(eightCode) || 0) + r.severity)
+  }
+
+  const calcVals: ICalcVal[] = Array.from(accumulator.entries()).map(([code, val]) => ({
+    code,
+    val,
+  }))
+
+  console.log('[经脉八维] 累加结果:', calcVals.length, '个码 →', JSON.stringify(calcVals))
+  return calcVals
+}
+
+// ── 推进到下一题或进入保存流程 ──────────────────────────────────
+async function advanceApiQuestion() {
+  consultationStore.advanceQuestionIndex()
+  const nextQuestion = consultationStore.getCurrentQuestion()
+
+  if (nextQuestion) {
+    // 还有题目，展示下一题
+    detailIsFirstQuestion.value = false
+    console.log(`[详细问诊] 下一题 (${consultationStore.detailPhase}): ${nextQuestion.kqihName}`)
+    const questionText = buildDoctorQuestionText(nextQuestion)
+    await doctorSay(questionText)
+    return
+  }
+
+  // 当前阶段题目全部答完
+  console.log(`[详细问诊] === ${consultationStore.detailPhase} 阶段全部答完 ===`)
+  if (consultationStore.detailPhase === 'required') {
+    // 必问问题答完 → 保存 → 获取追问
+    await saveAndFetchFollowUp()
+  } else if (consultationStore.detailPhase === 'followUp') {
+    // 追问答完 → 保存 → 获取补充问题
+    await saveFollowUpAndFetchProgram()
+  } else if (consultationStore.detailPhase === 'program') {
+    // 补充答完 → 保存 → 进入 detail_summary
+    await saveProgramAnswers()
+  }
+}
+
+// ── 通用答案保存（含单选题冲突自动剔除重试）──────────────────────
+async function saveAnswersWithRetry(phase: string): Promise<void> {
+  let answers = [...consultationStore.detailSelectedAnswers]
+
+  console.log(`[详细问诊] === ${phase}答案开始保存 ===`)
+  console.log(`[详细问诊] answerSheetId:`, consultationStore.answerSheetId)
+  console.log(`[详细问诊] 共 ${answers.length} 条答案:`, JSON.stringify(answers))
+
+  let retryCount = 0
+  const maxRetries = 5
+
+  while (retryCount <= maxRetries) {
+    try {
+      await batchSaveAnswers({
+        answerSheetId: consultationStore.answerSheetId,
+        kqmId: consultationStore.questionModel,
+        dialecticCount: '1',
+        answers,
+      })
+      console.log(`[详细问诊] ✅ ${phase}答案保存成功（${answers.length} 条）`)
+      return
+    } catch (e: any) {
+      const msg = e?.message || ''
+      const match = msg.match(/questionId[:\s：]+([A-Fa-f0-9]+)/i)
+
+      if (match && (msg.includes('单选') || msg.includes('选择一个'))) {
+        const badId = match[1]
+        retryCount++
+        console.warn(`[详细问诊] ⚠️ ${phase}保存失败（第 ${retryCount} 次）: 单选题冲突 → questionId: ${badId}`)
+
+        const before = answers.length
+        answers = answers.filter(a => a.questionId !== badId)
+        console.log(`[详细问诊] 已剔除冲突题目 ${badId}，答案从 ${before} 条减为 ${answers.length} 条`)
+
+        if (answers.length === 0) {
+          console.error(`[详细问诊] ❌ ${phase}答案全部被剔除，放弃保存`)
+          return
+        }
+        // 继续下一轮重试
+      } else {
+        // 非单选题错误，不重试
+        console.error(`[详细问诊] ❌ ${phase}答案保存失败（不重试）:`, msg)
+        return
+      }
+    }
+  }
+
+  console.error(`[详细问诊] ❌ ${phase}答案保存失败：重试 ${maxRetries} 次后仍有冲突，放弃`)
+}
+
+// ── 保存必问答案 + 获取追问问题 ──────────────────────────────────
+async function saveAndFetchFollowUp() {
+  // 打印当前状态，帮助排查问题
+  console.log('[详细问诊] === 必问问题答完，开始保存 ===')
+  console.log('[详细问诊] answerSheetId:', consultationStore.answerSheetId)
+  console.log('[详细问诊] questionModel:', consultationStore.questionModel)
+
+  await saveAnswersWithRetry('必问')
+
+  // 获取追问问题
+  console.log('[详细问诊] --- 开始获取追问问题 ---')
+  try {
+    const result = await fetchFollowUpQuestions(
+      consultationStore.answerSheetId,
+      consultationStore.questionModel,
+    )
+    console.log('[详细问诊] 追问问题获取成功:', result.questionList.length, '个问题')
+    if (result.questionList.length > 0) {
+      // 清空答案收集，切换到追问阶段
+      consultationStore.resetDetailAnswers()
+      consultationStore.setFollowUpQuestions(result.questionList)
+      detailIsFirstQuestion.value = false
+      // 展示第一个追问问题
+      const firstQ = result.questionList[0]
+      const questionText = buildDoctorQuestionText(firstQ)
+      await doctorSay(questionText)
+      return
+    }
+    console.log('[详细问诊] 无追问问题，进入下一阶段')
+  } catch (e) {
+    console.error('[详细问诊] ❌ 获取追问问题失败:', e)
+  }
+
+  // 无追问或获取失败 → 继续获取补充问题（接口 10）
+  console.log('[详细问诊] 无追问问题，继续获取补充问题')
+  await saveFollowUpAndFetchProgram()
+}
+
+// ── 保存追问答案 + 获取补充问题 ──────────────────────────────────
+async function saveFollowUpAndFetchProgram() {
+  // 1. 保存追问答案
+  console.log('[详细问诊] === 追问答完，开始保存 ===')
+  console.log('[详细问诊] answerSheetId:', consultationStore.answerSheetId)
+
+  await saveAnswersWithRetry('追问')
+
+  // 2. 获取补充问题
+  console.log('[详细问诊] --- 开始获取补充问题 ---')
+  try {
+    const result = await fetchProgramQuestions(
+      consultationStore.answerSheetId,
+      consultationStore.questionModel,
+    )
+    if (result.questionList.length > 0) {
+      console.log('[详细问诊] 补充问题获取成功:', result.questionList.length, '个问题')
+      // 有补充问题：清空答案收集，切换到补充阶段
+      consultationStore.resetDetailAnswers()
+      consultationStore.setProgramQuestions(result.questionList)
+      detailIsFirstQuestion.value = false
+      // 展示第一个补充问题
+      const firstQ = result.questionList[0]
+      const questionText = buildDoctorQuestionText(firstQ)
+      await doctorSay(questionText)
+      return
+    }
+    console.log('[详细问诊] 无补充问题，进入汇总')
+  } catch (e) {
+    console.error('[详细问诊] ❌ 获取补充问题失败（流程继续）:', e)
+  }
+
+  // 3. 无补充问题或获取失败 → 进入 detail_summary
+  console.log('[详细问诊] → 进入 detail_summary（汇总确认）')
+  consultationStore.detailPhase = 'done'
+  await goToStep('detail_summary')
+}
+
+// ── 保存补充答案 ──────────────────────────────────────────────
+async function saveProgramAnswers() {
+  console.log('[详细问诊] === 补充答完，开始保存 ===')
+  console.log('[详细问诊] answerSheetId:', consultationStore.answerSheetId)
+
+  await saveAnswersWithRetry('补充')
+
+  console.log('[详细问诊] → 进入 detail_summary（汇总确认）')
+  consultationStore.detailPhase = 'done'
+  await goToStep('detail_summary')
 }
 
 // ── 处理选项点击 ─────────────────────────────────────────────
@@ -575,15 +1196,24 @@ const onOptionClick = async (label: string, nextStep: StepIdType, payload?: stri
   saveSnapshot(); clearTimers()
 
   if (currentStepId.value === 'detail_question') {
+    // API 驱动模式
+    if (consultationStore.getCurrentQuestion()) {
+      await handleApiDetailOption(label); return
+    }
+    // 本地降级模式
     await detail.handleDetailOptionClick(label); return
   }
   if (currentStepId.value === 'self_feature_question') {
     await selfFeature.handleSelfFeatureOptionClick(label); return
   }
 
-  // 舌脉分析确认：异常分支
-  if (currentStepId.value === 'analysis_review' && label === '确认相符' && analysisData.value?.isAbnormal) {
-    await goToStep('analysis_abnormal'); return
+  // 舌脉分析确认：保存答案到后端 + 处理异常分支
+  if (currentStepId.value === 'analysis_review' && label === '确认相符') {
+    await handleAnalysisConfirm()
+    // 异常分支：提示用户
+    if (analysisData.value?.isAbnormal) {
+      await goToStep('analysis_abnormal'); return
+    }
   }
 
   messages.value.push({ role: 'user', text: label })
@@ -616,6 +1246,25 @@ const buildFallbackQuestion = (): string => {
   }
 
   if (stepId === 'detail_question') {
+    // API 子选项模式（追问）
+    if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+      const labels = apiChildOptions.value.map(c => c.label).join('、')
+      const isSeverity = isSeverityChildren(apiChildOptions.value)
+      if (isSeverity) {
+        return `您说的我没太理解，请问这个情况的程度是较轻还是较重？您可以直接说：${labels}。`
+      }
+      return `您说的我没太理解，请问以下哪种更符合您的情况？您可以直接说：${labels}。`
+    }
+
+    // API 模式
+    const apiQuestion = consultationStore.getCurrentQuestion()
+    if (apiQuestion) {
+      const doctorText = buildDoctorQuestionText(apiQuestion)
+      const labels = apiQuestion.kytOptions.map(opt => opt.koihOption).filter(opt => opt !== '暂无').join('、')
+      return `您说的我没太理解，${doctorText.replace(/？$/, '')}？您可以直接说：${labels}。`
+    }
+
+    // 本地降级模式
     if (detail.detailSeverityPending.value) {
       return `您说的我没太理解，请问${detail.detailSeverityPending.value.subjectText}的程度是较轻还是较重？您可以直接说"较轻"或"较重"。`
     }
@@ -713,7 +1362,50 @@ const onSubmitText = async (text: string) => {
     }
   }
 
-  // ── detail_question 程度追问处理（detailSeverityPending 存在时，选项固定为"较轻/较重"）──
+  // ── detail_question 子选项追问处理（API 子选项模式：程度类或通用类）──
+  if (currentStepId.value === 'detail_question' && pendingParentOption.value && apiChildOptions.value.length > 0) {
+    isTyping.value = true
+    const isSeverity = isSeverityChildren(apiChildOptions.value)
+
+    // 动态生成 LLM 分类用的选项描述
+    const classifyOptions = apiChildOptions.value.map(c => {
+      if (c.semanticDesc) {
+        // 通用子选项：使用后端提供的 koihOpIllustrate
+        return { label: c.label, semanticDesc: c.semanticDesc }
+      }
+      // 程度子选项：使用硬编码的程度描述
+      return {
+        label: c.label,
+        semanticDesc: c.label === '较重'
+          ? '用户表达程度严重、很厉害、挺重、比较重、很严重、有点重、蛮重、特别重，核心是"程度偏重"'
+          : '用户表达程度轻微、不太严重、还好、还行、一般般、不重、不怎么重、一点点，核心是"程度轻微"',
+      }
+    })
+
+    // 动态生成追问语（传给 LLM 和重试提示）
+    const childLabels = apiChildOptions.value.map(c => c.label).join('、')
+    const doctorText = isSeverity
+      ? '请问这个情况的程度是较轻还是较重？'
+      : `请问以下哪种更符合您的情况？您可以直接说：${childLabels}`
+    const retryText = isSeverity
+      ? '请您再说一下，这个情况是较轻还是比较重呢？'
+      : `请您再说一下，具体是哪一种呢？您可以直接说：${childLabels}`
+
+    const optionResult = await classifyOption(text, 'detail_question', classifyOptions, doctorText); isTyping.value = false
+    if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
+      const lastIdx = messages.value.length - 1
+      if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+      // 替换为匹配后的选项标签
+      messages.value.push({ role: 'user', text: optionResult.matchedLabel! })
+      await handleApiDetailOption(optionResult.matchedLabel!)
+      return
+    }
+    // 未匹配，提示重试
+    await doctorSay(retryText)
+    return
+  }
+
+  // ── detail_question 程度追问处理（本地降级模式）──
   if (currentStepId.value === 'detail_question' && detail.detailSeverityPending.value) {
     isTyping.value = true
     const severityOptions = [
@@ -753,9 +1445,41 @@ const onSubmitText = async (text: string) => {
     let llmOptions: { label: string; semanticDesc?: string }[]
 
     if (currentStepId.value === 'detail_question') {
-      const question = detail.findQuestion(detail.detailQuestionCategory.value)
-      currentDoctorText = question?.doctorText
-      llmOptions = (question?.options || step.options!).map((opt) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+      // ── 否定回答检测：用户说"没有"、"无"、"都不是"等，跳过当前问题 ──
+      // 具体否定短语（可在句中任意位置匹配）
+      const NEGATION_PHRASES = [
+        '没有该症状', '没有这个症状', '没有这些症状', '没有这种情况', '没有这个情况',
+        '没有这些', '都没有这些', '都没有', '都不是', '都没有这些',
+        '没有以上', '没有上述', '无上述', '无以上',
+        '没这个情况', '没这种情况', '没这些情况',
+        '不存在这种情况', '不存在这些情况',
+        '暂时还没有', '目前还没有', '目前还没有该症状',
+        '没有呢', '没有过',
+      ]
+      // 简短否定（仅匹配开头，避免"无畏寒"等误判）
+      const SHORT_NEGATION = [/^没有/, /^无$/]
+      const trimmed = text.trim()
+      const isNegation = NEGATION_PHRASES.some(p => trimmed.includes(p)) || SHORT_NEGATION.some(p => p.test(trimmed))
+      if (isNegation) {
+        await advanceApiQuestion()
+        return
+      }
+
+      const apiQuestion = consultationStore.getCurrentQuestion()
+
+      if (apiQuestion) {
+        // API 模式：使用 API 选项进行分类（传入 koihOpIllustrate 作为语义描述，帮助 LLM 理解选项边界）
+        currentDoctorText = buildDoctorQuestionText(apiQuestion)
+        llmOptions = apiQuestion.kytOptions.map((opt) => ({
+          label: opt.koihOption,
+          semanticDesc: opt.koihOpIllustrate || undefined,
+        }))
+      } else {
+        // 本地降级模式：使用本地题库选项
+        const question = detail.findQuestion(detail.detailQuestionCategory.value)
+        currentDoctorText = question?.doctorText
+        llmOptions = (question?.options || step.options!).map((opt) => ({ label: opt.label, semanticDesc: opt.semanticDesc }))
+      }
 
       // 构建上下文提示：已记录的答案帮助 LLM 理解当前匹配方向
       const recordedLabels = detail.detailAnswers.value.map(a => a.label).filter(Boolean)
@@ -775,12 +1499,20 @@ const onSubmitText = async (text: string) => {
     if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
       clarificationCandidates.value = []
 
-      // detail_question 的特殊处理：选项是动态的，直接调用 handleDetailOptionClick
+      // detail_question 的特殊处理：API 模式或本地模式
       if (currentStepId.value === 'detail_question') {
-        detail.detailFailCount.value = 0
         const lastIdx = messages.value.length - 1
         if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
-        await detail.handleDetailOptionClick(optionResult.matchedLabel!)
+        // 替换为匹配后的选项标签（方案 B）
+        messages.value.push({ role: 'user', text: optionResult.matchedLabel! })
+        if (consultationStore.getCurrentQuestion()) {
+          // API 驱动模式：传入原始文本用于程度自动识别
+          await handleApiDetailOption(optionResult.matchedLabel!, text)
+        } else {
+          // 本地降级模式
+          detail.detailFailCount.value = 0
+          await detail.handleDetailOptionClick(optionResult.matchedLabel!)
+        }
         return
       }
 
@@ -796,6 +1528,10 @@ const onSubmitText = async (text: string) => {
       // 其他步骤：从 step.options 中查找并调用
       const matched = step.options!.find(opt => opt.label === optionResult.matchedLabel)
       if (matched) {
+        // analysis_review 确认时，先保存舌脉数据
+        if (currentStepId.value === 'analysis_review' && matched.label === '确认相符') {
+          await handleAnalysisConfirm()
+        }
         await goToStep(matched.nextStep, matched.payload); return
       }
     }
@@ -816,6 +1552,20 @@ const onSubmitText = async (text: string) => {
       }
     }
 
+    // ── 兜底：LLM 返回多个匹配但未生成追问语 → 自动生成追问（概括性回答引导）──
+    if (optionResult && optionResult.matchedLabels.length >= 2 && !optionResult.clarificationQuestion) {
+      const filterOptions = currentStepId.value === 'detail_question'
+        ? (detail.findQuestion(detail.detailQuestionCategory.value)?.options || [])
+        : (step.options || [])
+      const candidates = optionResult.matchedLabels.filter(label => filterOptions.some((opt) => opt.label === label))
+      if (candidates.length >= 2) {
+        clarificationCandidates.value = candidates
+        const defaultClarification = `请问具体是哪一种呢？您可以直接说：${candidates.join('、')}。`
+        await doctorSay(defaultClarification)
+        return
+      }
+    }
+
     if (optionResult && optionResult.matchedLabels.length >= 2 && optionResult.clarificationQuestion) {
       // detail_question 使用动态题库查找，其他步骤使用 step.options
       const filterOptions = currentStepId.value === 'detail_question'
@@ -823,6 +1573,24 @@ const onSubmitText = async (text: string) => {
         : (step.options || [])
       const candidates = optionResult.matchedLabels.filter(label => filterOptions.some((opt) => opt.label === label))
       if (candidates.length >= 2) { clarificationCandidates.value = candidates; await doctorSay(optionResult.clarificationQuestion); return }
+    }
+
+    // ── LLM 识别到用户否定所有选项 → 跳过当前问题 ──
+    if (currentStepId.value === 'detail_question' && consultationStore.getCurrentQuestion()
+      && optionResult && !optionResult.matchedLabel && optionResult.confidence === 0
+      && optionResult.reasoning.startsWith('【否定】')) {
+      await advanceApiQuestion()
+      return
+    }
+
+    // ── detail_question API 模式兜底：LLM 无法匹配时的处理 ──
+    // 否定词已在前面处理（跳过问题），这里的所有情况都应该引导用户匹配选项
+    if (currentStepId.value === 'detail_question' && consultationStore.getCurrentQuestion()) {
+      if (!optionResult || !optionResult.matchedLabel || optionResult.confidence < 0.3) {
+        // 引导用户说具体症状或选择选项
+        await doctorSay(buildFallbackQuestion())
+        return
+      }
     }
   }
 
@@ -952,68 +1720,94 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
           <span class="syndrome-card-title">辨证分析报告</span>
         </div>
 
-        <div class="syndrome-card-section">
-          <div class="syndrome-section-title">一、病种 + 主症</div>
-          <div class="syndrome-section-content">
-            <span class="syndrome-tag disease-tag">{{ syndromeOutputData.diseaseCategory }}</span>
-            <span class="syndrome-tag symptom-tag">{{ syndromeOutputData.mainSymptom }}</span>
+        <!-- ── 真实 API 数据 ── -->
+        <template v-if="syndromeOutputData.isRealData">
+          <!-- 用户信息 -->
+          <div v-if="syndromeOutputData.userInfo" class="syndrome-card-section">
+            <div class="syndrome-section-title">基本信息</div>
+            <div class="syndrome-section-content" style="font-size: 0.9em; color: #666;">
+              姓名：{{ syndromeOutputData.userInfo.name }}
+              性别：{{ syndromeOutputData.userInfo.sex }}
+              年龄：{{ syndromeOutputData.userInfo.age }}
+              <br />
+              模型：{{ syndromeOutputData.modelName }}
+              时间：{{ syndromeOutputData.userInfo.time }}
+            </div>
           </div>
-        </div>
 
-        <div class="syndrome-card-section">
-          <div class="syndrome-section-title">二、主要症状</div>
-          <div class="syndrome-section-content">
-            <div class="syndrome-symptom-list">
-              <div v-for="(s, i) in syndromeOutputData.mainSymptoms" :key="i" class="syndrome-symptom-item">
+          <!-- 辨证结论 -->
+          <div v-if="syndromeOutputData.syndromeConclusion && syndromeOutputData.syndromeConclusion.length > 0" class="syndrome-card-section syndrome-highlight-section">
+            <div class="syndrome-section-title">一、辨证结论</div>
+            <div class="syndrome-section-content">
+              <div v-for="(item, i) in syndromeOutputData.syndromeConclusion" :key="i" class="syndrome-symptom-item">
                 <span class="syndrome-symptom-num">{{ i + 1 }}</span>
-                <span>{{ s }}</span>
+                <span>{{ item.key }}：{{ item.val }}分</span>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="syndrome-card-section syndrome-highlight-section">
-          <div class="syndrome-section-title">三、辨证结果</div>
-          <div class="syndrome-section-content">
-            <div class="syndrome-result-name">{{ syndromeOutputData.syndromeResult }}</div>
-            <div class="syndrome-result-detail">{{ syndromeOutputData.syndromeDetail }}</div>
+          <!-- 推荐方案（动态遍历 tuijianList） -->
+          <div v-for="(rec, i) in syndromeOutputData.recommendations" :key="i" class="syndrome-card-section">
+            <div class="syndrome-section-title">{{ i + (syndromeOutputData.syndromeConclusion?.length ? 2 : 1) }}、{{ rec.key }}</div>
+            <div class="syndrome-section-content">
+              <div class="syndrome-result-detail" style="white-space: pre-wrap; line-height: 1.8;">{{ rec.value }}</div>
+            </div>
           </div>
-        </div>
+        </template>
 
-        <div class="syndrome-card-section">
-          <div class="syndrome-section-title">四、经络图示</div>
-          <div class="syndrome-section-content">
-            <div class="syndrome-illustration">{{ syndromeOutputData.illustration }}</div>
+        <!-- ── Mock 降级数据 ── -->
+        <template v-else>
+          <div class="syndrome-card-section">
+            <div class="syndrome-section-title">一、病种 + 主症</div>
+            <div class="syndrome-section-content">
+              <span class="syndrome-tag disease-tag">{{ syndromeOutputData.diseaseCategory }}</span>
+              <span class="syndrome-tag symptom-tag">{{ syndromeOutputData.mainSymptom }}</span>
+            </div>
           </div>
-        </div>
-
-        <div class="syndrome-card-section">
-          <div class="syndrome-section-title">五、调理方案</div>
-          <div class="syndrome-section-content">
-            <div class="syndrome-plan-list">
-              <div v-for="(p, i) in syndromeOutputData.conditioningPlan" :key="i" class="syndrome-plan-item">
-                <span class="syndrome-plan-num">{{ i + 1 }}</span>
-                <span>{{ p }}</span>
+          <div class="syndrome-card-section">
+            <div class="syndrome-section-title">二、主要症状</div>
+            <div class="syndrome-section-content">
+              <div class="syndrome-symptom-list">
+                <div v-for="(s, i) in syndromeOutputData.mainSymptoms" :key="i" class="syndrome-symptom-item">
+                  <span class="syndrome-symptom-num">{{ i + 1 }}</span>
+                  <span>{{ s }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="syndrome-card-section">
-          <div class="syndrome-section-title">六、产品配套</div>
-          <div class="syndrome-section-content">
-            <div class="syndrome-product-list">
-              <div v-for="(prod, i) in syndromeOutputData.productRecommendation" :key="i" class="syndrome-product-item">
-                <span class="syndrome-product-badge">推荐</span>
-                <span>{{ prod }}</span>
+          <div class="syndrome-card-section syndrome-highlight-section">
+            <div class="syndrome-section-title">三、辨证结果</div>
+            <div class="syndrome-section-content">
+              <div class="syndrome-result-name">{{ syndromeOutputData.syndromeResult }}</div>
+              <div class="syndrome-result-detail">{{ syndromeOutputData.syndromeDetail }}</div>
+            </div>
+          </div>
+          <div class="syndrome-card-section">
+            <div class="syndrome-section-title">四、调理方案</div>
+            <div class="syndrome-section-content">
+              <div class="syndrome-plan-list">
+                <div v-for="(p, i) in syndromeOutputData.conditioningPlan" :key="i" class="syndrome-plan-item">
+                  <span class="syndrome-plan-num">{{ i + 1 }}</span>
+                  <span>{{ p }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="syndrome-card-footer">
-          <div class="syndrome-footer-tip">以上为模拟辨证分析结果，仅供参考。后续将接入真实证型计算引擎。</div>
-        </div>
+          <div class="syndrome-card-section">
+            <div class="syndrome-section-title">五、产品配套</div>
+            <div class="syndrome-section-content">
+              <div class="syndrome-product-list">
+                <div v-for="(prod, i) in syndromeOutputData.productRecommendation" :key="i" class="syndrome-product-item">
+                  <span class="syndrome-product-badge">推荐</span>
+                  <span>{{ prod }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="syndrome-card-footer">
+            <div class="syndrome-footer-tip">以上为模拟辨证分析结果，仅供参考（接口未返回有效数据）。</div>
+          </div>
+        </template>
       </div>
 
       <!-- 医生思考中 / 打字中 -->
@@ -1079,7 +1873,7 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
           <div class="capture-success-icon">✓</div>
           <div class="capture-success-text">采集成功</div>
         </template>
-        <!-- 采集中：显示进度 -->
+        <!-- 采集中：显示加载状态 -->
         <template v-else>
           <div class="capture-icon">
             <span v-if="captureType === 'tongue_top'">📷</span>
@@ -1089,8 +1883,9 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
           <div class="capture-title">
             {{ captureType === 'pulse' ? '正在测量脉搏…' : '正在拍摄舌象…' }}
           </div>
-          <div class="capture-progress-bar">
-            <div class="capture-progress-fill" :style="{ width: captureProgress + '%' }"></div>
+          <div class="capture-loading">
+            <span class="capture-spinner"></span>
+            <span>处理中，请稍候…</span>
           </div>
           <div class="capture-tip">
             {{ captureType === 'tongue_top' ? '请自然伸出舌头，面对镜头' : captureType === 'tongue_bottom' ? '请将舌头卷起，露出舌下脉络' : '请将手腕内侧贴近设备感应区' }}

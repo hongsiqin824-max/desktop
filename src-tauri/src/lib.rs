@@ -16,6 +16,8 @@ pub fn run() {
                 let _ = window.show();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // 启动本地代理服务器（LLM/ASR/TTS）
             let api_key = API_KEY.to_string();

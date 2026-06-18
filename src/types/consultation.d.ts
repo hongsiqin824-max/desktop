@@ -236,7 +236,6 @@ export interface IAnalysisData {
   tongueCoatingColor: string  // 舌苔颜色：白/浅黄/深黄
   tongueColor: string
   tongueSize: string
-  tongueBottom: string
   pulseType: string
   pulseRate: number
   isAbnormal: boolean
@@ -249,14 +248,21 @@ export type SpeechStatusType = 'idle' | 'listening' | 'processing' | 'error'
 
 // ── 证型输出类型 ──────────────────────────────────────────────
 export interface ISyndromeOutput {
-  diseaseCategory: string
-  mainSymptom: string
-  mainSymptoms: string[]
-  syndromeResult: string
-  syndromeDetail: string
-  illustration: string
-  conditioningPlan: string[]
-  productRecommendation: string[]
+  // 旧字段（mock 降级时使用）
+  diseaseCategory?: string
+  mainSymptom?: string
+  mainSymptoms?: string[]
+  syndromeResult?: string
+  syndromeDetail?: string
+  illustration?: string
+  conditioningPlan?: string[]
+  productRecommendation?: string[]
+  // 新字段（真实 API 数据）
+  isRealData?: boolean
+  userInfo?: { name: string; sex: string; age: string; time: string }
+  modelName?: string
+  syndromeConclusion?: { key: string; val: string }[]
+  recommendations?: { key: string; value: string }[]
 }
 
 // ── 重新选择快照类型 ────────────────────────────────────────────
@@ -287,4 +293,168 @@ export interface IStepSnapshot {
   selfFeatureExpandKey: string
   analysisData: IAnalysisData | null
   syndromeOutputData: ISyndromeOutput | null
+}
+
+// ── 第三方舌象 AI 分析 API 类型 ────────────────────────────────
+// 服务商：脉至语 (aitongue.maizhiyu.com)
+// 流程（版本2-无答题）：上传图片 → 获取分析报告
+
+/** uploadImage 响应体 */
+export interface ITongueUploadResponse {
+  code: number   // 0 = 成功
+  data: string   // 上传后的图片 URL
+  msg: string
+}
+
+/** getReport 响应体（版本2：无答题版本，直接返回分析结果） */
+export interface ITongueReportResponse {
+  code: number
+  data: {
+    age: number
+    durl: string              // 背面舌象 URL
+    uurl: string              // 正面舌象 URL
+    faceUrl: string           // 面象 URL
+    id: number
+    uuId: string
+    name: string
+    phone: string
+    psId: number
+    sex: number               // 0=女 1=男
+    shese: string             // 舌色（如"淡红舌"、"红舌"、"紫舌"）
+    shexing: string           // 舌型（如"胖大舌"、"瘦薄舌"、"齿龈舌"）
+    taise: string             // 苔色（如"白"、"浅黄"、"深黄"）
+    taixing: string           // 苔型（如"薄苔"、"厚苔"、"腻苔"）
+    tizhi: string             // 体质（如"气虚质"、"阳虚质"）
+    tizhiDistribution: string // 体质分布
+    cutUUrl: string           // AI 裁剪后的舌体图片 URL
+    analysisResults: string   // 舌象分析置信度详情（JSON 字符串）
+    updateTime: string
+    createTime: string
+  }
+  msg: string
+}
+
+// ── 脉诊仪服务类型 ──────────────────────────────────────────────
+// 蓝牙脉诊设备采集原始数据 → 提交给脉诊仪服务 → 返回各脉象置信度
+// 置信度为 0~1 之间的数值，> 0.6 判定为该脉象
+
+/** 脉诊仪服务返回的脉象分析数据 */
+export interface IPulseAnalysisData {
+  maibo: number               // 脉搏次数（次/分钟）
+  xianmai: number             // 弦脉置信度 (0~1)
+  huamai: number              // 滑脉置信度 (0~1)
+  semai: number               // 涩脉置信度 (0~1)
+  ruomai: number              // 弱脉/无力脉置信度 (0~1)
+  jiedai?: number             // 结代脉置信度 (0~1)，部分设备可能不返回
+}
+
+// ── 后端舌脉问题 API 类型 ──────────────────────────────────────
+// getDigitalHumanQuestionsByModel 返回的问题 + 选项树形结构
+// saveDigitalHumanTonguePulseAnswers 提交的答案也使用相同结构
+
+/** 舌脉选项（问题中的每个可选答案，支持嵌套子选项） */
+export interface ITonguePulseOption {
+  koiId: string
+  koiBelongQus: string
+  koiParentOpid: string | null
+  koiOption: string                        // 选项文本（如"胖大舌"、"苔白"）
+  koiOptionCode: string                    // 选项编码（如"LSZ2"、"LSZ17"）
+  koiHasChild: 0 | 1                      // 是否有子选项
+  koiOptionMutualExclusion: string[]       // 互斥组标识（如["SSZC"]表示同组单选）
+  koiChildsOption: ITonguePulseOption[]    // 嵌套的子选项列表
+  koiIsChoose?: '0' | '1' | null          // 是否选中（提交时使用）
+  // 以下字段仅在获取接口返回，提交时不需要
+  koiPatternVal?: string | null
+  koiPatternIndex?: string | null
+  koiOptionVal?: string
+  koiIndex?: string
+  koiQuatoCode?: string
+  koiOpIllustrate?: string
+  koiCreateTime?: string
+  koiAddUserid?: string
+  koiUpdateTime?: string
+  koiUpdateUserid?: string
+  koiDialecticCount?: string | null
+  koiQuatoFilePath?: string | null
+}
+
+/** 舌脉问题（包含多个选项） */
+export interface ITonguePulseQuestion {
+  kqiId: string
+  kqiIndex: string
+  kqiName: string              // 问题名称（如"舌苔颜色部分"、"舌形"、"脉搏"）
+  kqiCode: string              // 问题编码（如"LSZ04"、"LSZ01"、"MB"）
+  kqiIllustrate: string        // 问题说明
+  kytOptions: ITonguePulseOption[]
+  // 以下字段仅在获取接口返回
+  kqiFormulaId?: string
+  kqiFormulaStr?: string | null
+  kqiQusBaseid?: string | null
+  kqiWeight?: string | null
+  kqiIsEnable?: string
+  kqiIsEnableStr?: string | null
+  kqiQueType?: string
+  kqiShowFormular?: string
+  kqiQueTypeStr?: string | null
+  kqmName?: string | null
+  kqiAddTime?: string
+  kqiAddUserid?: string
+  kqiAddUserName?: string | null
+  kqiUpdateTime?: string
+  kqiUpdateUserid?: string
+  kqiQueModelid?: string
+  kqiDialecticCount?: string
+  lastChooseOptionIds?: string[] | null
+  kqiUpdateUserName?: string | null
+}
+
+/** getDigitalHumanQuestionsByModel 响应体 */
+export interface ITonguePulseQuestionsResponse {
+  status: number
+  msg: string
+  obj: {
+    answerSheetId: string
+    questionSeqConfigId: string
+    kqmId: string
+    tongueQuestions: ITonguePulseQuestion[]
+    pulseQuestions: ITonguePulseQuestion[]
+  }
+}
+
+// ── 舌脉答案保存 API 类型 ──────────────────────────────────────
+
+/** 保存答案时的单个选项（只需 koiId + koiIsChoose + koiChildsOption） */
+export interface ISubmitOption {
+  koiId: string
+  koiIsChoose: '0' | '1'
+  koiChildsOption: ISubmitOption[]
+}
+
+/** 保存答案时的单个问题（只需 kqiId + kytOptions） */
+export interface ISubmitQuestion {
+  kqiId: string
+  kytOptions: ISubmitOption[]
+}
+
+/** saveDigitalHumanTonguePulseAnswers 请求体 */
+export interface ITonguePulseSaveRequest {
+  answerSheetId: string
+  kqmId: string
+  maibo: string                            // 脉搏次数（字符串格式）
+  tongueQuestions: ISubmitQuestion[]
+  pulseQuestions: ISubmitQuestion[]
+}
+
+/** saveDigitalHumanTonguePulseAnswers 响应体 */
+export interface ITonguePulseSaveResponse {
+  status: number
+  msg: string
+  obj: {
+    answerSheetId: string
+    answerCount: number
+    tongueQuestionCount: number
+    pulseQuestionCount: number
+    kqmId: string
+    maibo: string
+  }
 }

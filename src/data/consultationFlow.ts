@@ -282,7 +282,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   },
   end_moderate: {
     id: 'end_moderate',
-    doctorText: '好的，您的情况我们可以帮助调理！接下来为了更准确地为您辨证，需要采集一下您的舌象和脉象信息，请稍等～',
+    doctorText: '好的，接下来帮您采集舌象和脉象信息，以便更准确地辨证。',
     isEnd: false,
     autoAdvance: { nextStep: 'tongue_top_intro', delay: 1000 },
   },
@@ -298,33 +298,31 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   },
 
   // ── 舌象采集：舌面 ─────────────────────────────────────────
+  // autoAdvance 已移除：由 useTonguePulseCapture composable 控制流程推进
   tongue_top_intro: {
     id: 'tongue_top_intro',
-    doctorText: '为了更准确地为您辨证，接下来需要采集舌象和脉象信息。请您先找个光线充足的地方，面对镜头，自然地伸出舌头来，我看看。',
+    doctorText: '请对着设备自然伸出舌头，保持放松，我来采集舌面照片。',
     captureType: 'tongue_top',
-    autoAdvance: { nextStep: 'tongue_bottom_intro', delay: 3000 },
   },
 
   // ── 舌象采集：舌下 ─────────────────────────────────────────
   tongue_bottom_intro: {
     id: 'tongue_bottom_intro',
-    doctorText: '好的，舌面已经采集到了。接下来请您将舌头向上卷起，舌尖抵住上牙根部，露出舌下脉络，我再看看。',
+    doctorText: '舌面已采集。请将舌头向上卷起，露出舌下脉络，我再看看。',
     captureType: 'tongue_bottom',
-    autoAdvance: { nextStep: 'pulse_intro', delay: 3000 },
   },
 
   // ── 脉象采集 ──────────────────────────────────────────────
   pulse_intro: {
     id: 'pulse_intro',
-    doctorText: '舌象采集完成。接下来请您将手腕自然平放，掌心向上，将手腕内侧脉搏跳动处贴近设备感应区，我们将为您测量脉搏。',
+    doctorText: '舌象采集完成。请将手腕贴近脉诊设备，开始测量脉搏。',
     captureType: 'pulse',
-    autoAdvance: { nextStep: 'pulse_done', delay: 3500 },
   },
 
   pulse_done: {
     id: 'pulse_done',
-    doctorText: '好的，脉象数据已经采集完毕。',
-    autoAdvance: { nextStep: 'analysis_review', delay: 800 },
+    doctorText: '脉象已采集完毕，正在为您分析舌脉信息。',
+    autoAdvance: { nextStep: 'analysis_review', delay: 1500 },
   },
 
   // ── 系统分析结果与确认 ───────────────────────────────────
@@ -365,7 +363,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   // 采集失败 → 引导重新采集
   analysis_fail: {
     id: 'analysis_fail',
-    doctorText: '刚才的舌象或脉象采集可能受到光线或设备影响，未能完整获取。请您确保光线充足，手腕与设备贴合紧密，我们重新采集一次可以吗？',
+    doctorText: '采集可能受到光线或设备影响，请确保光线充足后重新采集，可以吗？',
     options: [
       { label: '重新采集', nextStep: 'tongue_top_intro' },
       { label: '暂时不采集', nextStep: 'analysis_hospital' },

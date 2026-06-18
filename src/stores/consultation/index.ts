@@ -3,7 +3,8 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { IAnalysisData, IDetailAnswer, ISelfFeatureRecord, ISyndromeOutput, ITonguePulseCodes } from '@/types/consultation'
+import type { IAnalysisData, IDetailAnswer, ISelfFeatureRecord, ISyndromeOutput, ITonguePulseCodes, ITonguePulseQuestion, ITongueReportResponse, IPulseAnalysisData } from '@/types/consultation'
+import type { IDetailQuestionItem, IBatchSaveAnswer } from '@/types/consultationDetail'
 import type { IUserInfo } from '@/types/user'
 import { useUserStore } from '@/stores/global/user'
 import { ZONE_PREFIX_MAP } from '@/data/selfFeature'
@@ -40,6 +41,11 @@ export interface IBackendPayload {
 }
 
 export const useConsultationStore = defineStore('consultation', () => {
+  // ── 会话标识（来自 createSession 接口）──
+  const cusId = ref('')
+  const answerSheetId = ref('')
+  const questionModel = ref('1')
+
   // ── 问诊流程数据 ──
   const mainSymptom = ref('')
   const severityLevel = ref<'mild' | 'moderate' | 'severe' | ''>('')
@@ -50,10 +56,53 @@ export const useConsultationStore = defineStore('consultation', () => {
   const startTime = ref('')
   const endTime = ref('')
 
+  // ── 舌脉采集数据（新增）──
+  /** 第三方 AI 舌象分析结果 */
+  const tongueReport = ref<ITongueReportResponse['data'] | null>(null)
+  /** 脉诊仪返回的脉象分析数据 */
+  const pulseAnalysis = ref<IPulseAnalysisData | null>(null)
+  /** 后端舌诊问题列表（已匹配 koiIsChoose） */
+  const matchedTongueQuestions = ref<ITonguePulseQuestion[]>([])
+  /** 后端脉诊问题列表（已匹配 koiIsChoose） */
+  const matchedPulseQuestions = ref<ITonguePulseQuestion[]>([])
+  /** 舌脉答案是否已保存到后端 */
+  const tonguePulseSaved = ref(false)
+
+  // ── 详细问诊数据（后端 API 驱动）──
+  /** 必问问题列表（来自接口 7） */
+  const requiredQuestions = ref<IDetailQuestionItem[]>([])
+  /** 追问问题列表（来自接口 9） */
+  const followUpQuestions = ref<IDetailQuestionItem[]>([])
+  /** 补充问题列表（来自接口 10） */
+  const programQuestions = ref<IDetailQuestionItem[]>([])
+  /** 当前正在问第几题（索引） */
+  const currentQuestionIndex = ref(0)
+  /** 已收集的答案（用于接口 8 保存） */
+  const detailSelectedAnswers = ref<IBatchSaveAnswer[]>([])
+  /** 当前问诊阶段：required=必问, followUp=追问, program=补充, done=完成 */
+  const detailPhase = ref<'required' | 'followUp' | 'program' | 'done'>('required')
+
   // ── 精简版数据快照（问诊结束时自动固化）──
   const backendPayload = ref<IBackendPayload | null>(null)
 
   // ── 设置方法 ──
+
+  /** 设置会话标识数据（createSession 接口返回后调用） */
+  const setSessionData = (data: { cusId: string; answerSheetId: string }) => {
+    cusId.value = data.cusId
+    answerSheetId.value = data.answerSheetId
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置会话标识:', data)
+    }
+  }
+
+  /** 设置当前病种（默认"感冒"，确认主症后更新为真实病种） */
+  const setQuestionModel = (model: string) => {
+    questionModel.value = model
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 更新 questionModel:', model)
+    }
+  }
 
   /** 设置主症 */
   const setMainSymptom = (symptom: string) => {
@@ -118,6 +167,116 @@ export const useConsultationStore = defineStore('consultation', () => {
     if (import.meta.env.DEV) {
       console.log('[问诊数据] 设置证型输出:', output)
     }
+  }
+
+  // ── 舌脉采集数据设置方法（新增）──
+
+  /** 设置第三方 AI 舌象分析结果 */
+  const setTongueReport = (report: ITongueReportResponse['data']) => {
+    tongueReport.value = report
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置舌象AI结果:', {
+        舌色: report.shese, 舌型: report.shexing,
+        苔色: report.taise, 苔型: report.taixing, 体质: report.tizhi,
+      })
+    }
+  }
+
+  /** 设置脉诊仪分析数据 */
+  const setPulseAnalysis = (data: IPulseAnalysisData) => {
+    pulseAnalysis.value = data
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置脉诊数据:', data)
+    }
+  }
+
+  /** 设置匹配后的舌诊问题列表 */
+  const setMatchedTongueQuestions = (questions: ITonguePulseQuestion[]) => {
+    matchedTongueQuestions.value = questions
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置舌诊问题(已匹配):', questions.length, '个问题')
+    }
+  }
+
+  /** 设置匹配后的脉诊问题列表 */
+  const setMatchedPulseQuestions = (questions: ITonguePulseQuestion[]) => {
+    matchedPulseQuestions.value = questions
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置脉诊问题(已匹配):', questions.length, '个问题')
+    }
+  }
+
+  /** 标记舌脉答案已保存到后端 */
+  const markTonguePulseSaved = () => {
+    tonguePulseSaved.value = true
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 舌脉答案已保存')
+    }
+  }
+
+  // ── 详细问诊设置方法 ──
+
+  /** 设置必问问题列表（接口 7 返回后调用） */
+  const setRequiredQuestions = (questions: IDetailQuestionItem[]) => {
+    requiredQuestions.value = questions
+    currentQuestionIndex.value = 0
+    detailPhase.value = 'required'
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置必问问题:', questions.length, '题')
+    }
+  }
+
+  /** 设置追问问题列表（接口 9 返回后调用） */
+  const setFollowUpQuestions = (questions: IDetailQuestionItem[]) => {
+    followUpQuestions.value = questions
+    currentQuestionIndex.value = 0
+    detailPhase.value = 'followUp'
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置追问问题:', questions.length, '题')
+    }
+  }
+
+  /** 设置补充问题列表（接口 10 返回后调用） */
+  const setProgramQuestions = (questions: IDetailQuestionItem[]) => {
+    programQuestions.value = questions
+    currentQuestionIndex.value = 0
+    detailPhase.value = 'program'
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 设置补充问题:', questions.length, '题')
+    }
+  }
+
+  /** 添加一条详细问诊答案 */
+  const addDetailSelectedAnswer = (answer: IBatchSaveAnswer) => {
+    detailSelectedAnswers.value.push(answer)
+    if (import.meta.env.DEV) {
+      console.log('[问诊数据] 记录答案:', answer.questionId, '→', answer.selectedOptionIds)
+    }
+  }
+
+  /** 推进到下一题 */
+  const advanceQuestionIndex = () => {
+    currentQuestionIndex.value++
+  }
+
+  /** 获取当前阶段的问题列表 */
+  const getCurrentQuestionList = (): IDetailQuestionItem[] => {
+    if (detailPhase.value === 'required') return requiredQuestions.value
+    if (detailPhase.value === 'followUp') return followUpQuestions.value
+    if (detailPhase.value === 'program') return programQuestions.value
+    return []
+  }
+
+  /** 获取当前正在问的问题 */
+  const getCurrentQuestion = (): IDetailQuestionItem | null => {
+    const list = getCurrentQuestionList()
+    return list[currentQuestionIndex.value] || null
+  }
+
+  /** 重置详细问诊数据（保留问题列表用于降级，清空答案） */
+  const resetDetailAnswers = () => {
+    detailSelectedAnswers.value = []
+    currentQuestionIndex.value = 0
   }
 
   /** 开始问诊（记录开始时间） */
@@ -258,6 +417,9 @@ export const useConsultationStore = defineStore('consultation', () => {
 
   /** 重置所有问诊数据（开始新问诊时调用） */
   const reset = () => {
+    cusId.value = ''
+    answerSheetId.value = ''
+    questionModel.value = '1'
     mainSymptom.value = ''
     severityLevel.value = ''
     analysisData.value = null
@@ -267,12 +429,31 @@ export const useConsultationStore = defineStore('consultation', () => {
     startTime.value = ''
     endTime.value = ''
     backendPayload.value = null
+    // 舌脉采集数据重置
+    tongueReport.value = null
+    pulseAnalysis.value = null
+    matchedTongueQuestions.value = []
+    matchedPulseQuestions.value = []
+    tonguePulseSaved.value = false
+    // 详细问诊数据重置
+    requiredQuestions.value = []
+    followUpQuestions.value = []
+    programQuestions.value = []
+    currentQuestionIndex.value = 0
+    detailSelectedAnswers.value = []
+    detailPhase.value = 'required'
     if (import.meta.env.DEV) {
       console.log('[问诊数据] 已重置所有数据')
     }
   }
 
   return {
+    // 会话标识
+    cusId,
+    answerSheetId,
+    questionModel,
+    setSessionData,
+    setQuestionModel,
     // 状态
     mainSymptom,
     severityLevel,
@@ -283,6 +464,12 @@ export const useConsultationStore = defineStore('consultation', () => {
     startTime,
     endTime,
     backendPayload,
+    // 舌脉采集状态
+    tongueReport,
+    pulseAnalysis,
+    matchedTongueQuestions,
+    matchedPulseQuestions,
+    tonguePulseSaved,
     // 设置方法
     setMainSymptom,
     setSeverityLevel,
@@ -295,6 +482,28 @@ export const useConsultationStore = defineStore('consultation', () => {
     startConsultation,
     endConsultation,
     finalizeBackendPayload,
+    // 舌脉采集设置方法
+    setTongueReport,
+    setPulseAnalysis,
+    setMatchedTongueQuestions,
+    setMatchedPulseQuestions,
+    markTonguePulseSaved,
+    // 详细问诊状态
+    requiredQuestions,
+    followUpQuestions,
+    programQuestions,
+    currentQuestionIndex,
+    detailSelectedAnswers,
+    detailPhase,
+    // 详细问诊设置方法
+    setRequiredQuestions,
+    setFollowUpQuestions,
+    setProgramQuestions,
+    addDetailSelectedAnswer,
+    advanceQuestionIndex,
+    getCurrentQuestionList,
+    getCurrentQuestion,
+    resetDetailAnswers,
     // 导出方法
     exportData,
     exportAndLog,

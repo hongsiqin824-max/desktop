@@ -15,6 +15,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
     "@tresjs/cientos": "^5.7.1",
     "@tresjs/core": "^5.8.1",
     "echarts": "^6.0.0",

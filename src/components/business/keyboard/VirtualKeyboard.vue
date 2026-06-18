@@ -5,7 +5,7 @@ import './VirtualKeyboard.css'
 
 const props = defineProps<{
   show: boolean
-  mode?: 'numeric' | 'chinese'
+  mode?: 'numeric' | 'chinese' | 'alphanumeric'
 }>()
 
 const emit = defineEmits<{
@@ -15,9 +15,18 @@ const emit = defineEmits<{
 }>()
 
 const pinyinInput = ref('')
+const isShiftActive = ref(false)
 
 const onKeyPress = (key: string) => {
-  if (props.mode === 'chinese') {
+  if (props.mode === 'alphanumeric') {
+    // alphanumeric 模式：直接输出字母或数字
+    const output = isShiftActive.value ? key.toUpperCase() : key
+    emit('input', output)
+    // 按一次字母后自动关闭大写
+    if (isShiftActive.value && /[a-z]/.test(key)) {
+      isShiftActive.value = false
+    }
+  } else if (props.mode === 'chinese') {
     if (key === ' ') {
       // 空格键可以清空或什么都不做，这里做简单处理
       return
@@ -38,7 +47,12 @@ const onDelete = () => {
 
 const onClose = () => {
   pinyinInput.value = ''
+  isShiftActive.value = false
   emit('close')
+}
+
+const toggleShift = () => {
+  isShiftActive.value = !isShiftActive.value
 }
 
 // 默认常用姓氏/汉字，当没有输入拼音时显示
@@ -77,33 +91,71 @@ const onSelectCandidate = (char: string) => {
 const row1 = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p']
 const row2 = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l']
 const row3 = ['z', 'x', 'c', 'v', 'b', 'n', 'm']
+const numRow = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 </script>
 
 <template>
   <div class="virtual-keyboard-wrapper" :class="{ show: show }">
     <div class="keyboard-header">
-      <div class="keyboard-title">{{ mode === 'chinese' ? '全键盘 (中文)' : '数字键盘' }}</div>
+      <div class="keyboard-title">
+        {{ mode === 'chinese' ? '全键盘 (中文)' : mode === 'alphanumeric' ? '字母数字键盘' : '数字键盘' }}
+      </div>
       <button class="keyboard-close-btn" @click="onClose">完成</button>
     </div>
-    
-    <div class="keyboard-grid" v-if="mode !== 'chinese'">
+
+    <!-- 数字键盘模式 -->
+    <div class="keyboard-grid" v-if="mode === 'numeric' || mode === undefined">
       <button class="key-btn" @click="onKeyPress('1')">1</button>
       <button class="key-btn" @click="onKeyPress('2')">2</button>
       <button class="key-btn" @click="onKeyPress('3')">3</button>
-      
+
       <button class="key-btn" @click="onKeyPress('4')">4</button>
       <button class="key-btn" @click="onKeyPress('5')">5</button>
       <button class="key-btn" @click="onKeyPress('6')">6</button>
-      
+
       <button class="key-btn" @click="onKeyPress('7')">7</button>
       <button class="key-btn" @click="onKeyPress('8')">8</button>
       <button class="key-btn" @click="onKeyPress('9')">9</button>
-      
+
       <button class="key-btn key-action" @click="onClose">收起</button>
       <button class="key-btn" @click="onKeyPress('0')">0</button>
       <button class="key-btn key-action" @click="onDelete">删除</button>
     </div>
 
+    <!-- alphanumeric 模式：字母 + 数字 -->
+    <div class="keyboard-qwerty" v-else-if="mode === 'alphanumeric'">
+      <!-- 数字行 -->
+      <div class="qwerty-row">
+        <button class="key-btn qwerty-btn num-btn" v-for="key in numRow" :key="key" @click="onKeyPress(key)">{{ key }}</button>
+      </div>
+      <!-- 字母行 -->
+      <div class="qwerty-row">
+        <button class="key-btn qwerty-btn" v-for="key in row1" :key="key" @click="onKeyPress(key)">
+          {{ isShiftActive ? key.toUpperCase() : key }}
+        </button>
+      </div>
+      <div class="qwerty-row">
+        <button class="key-btn qwerty-btn" v-for="key in row2" :key="key" @click="onKeyPress(key)">
+          {{ isShiftActive ? key.toUpperCase() : key }}
+        </button>
+      </div>
+      <div class="qwerty-row">
+        <button class="key-btn qwerty-btn" v-for="key in row3" :key="key" @click="onKeyPress(key)">
+          {{ isShiftActive ? key.toUpperCase() : key }}
+        </button>
+      </div>
+      <!-- 底部功能行 -->
+      <div class="qwerty-row">
+        <button class="key-btn key-action qwerty-btn key-shift" :class="{ active: isShiftActive }" @click="toggleShift">
+          ⇧
+        </button>
+        <button class="key-btn key-action qwerty-btn key-flex-side" @click="onClose">收起</button>
+        <button class="key-btn qwerty-btn key-flex-space" @click="onKeyPress(' ')">空格</button>
+        <button class="key-btn key-action qwerty-btn key-flex-side" @click="onDelete">删除</button>
+      </div>
+    </div>
+
+    <!-- chinese 模式：拼音输入 -->
     <div class="keyboard-qwerty" v-else>
       <div class="chinese-candidate-bar">
         <div class="pinyin-display" v-if="pinyinInput">{{ pinyinInput }}</div>

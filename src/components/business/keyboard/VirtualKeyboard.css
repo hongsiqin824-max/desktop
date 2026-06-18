@@ -148,3 +148,19 @@
 .key-flex-space {
   flex: 4;
 }
+
+/* alphanumeric 模式特殊样式 */
+.num-btn {
+  font-size: 36px;
+  background-color: var(--color-beige-200);
+}
+
+.key-shift {
+  font-size: 36px;
+  transition: all 0.15s ease;
+}
+
+.key-shift.active {
+  background-color: var(--theme-primary);
+  color: var(--color-white);
+}

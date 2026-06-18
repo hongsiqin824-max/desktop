@@ -2,6 +2,8 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useUserStore } from '@/stores/global/user'
+import { useConsultationStore } from '@/stores/consultation'
+import { createSession } from '@/api/consultation'
 import type { GenderType } from '@/types/user'
 import ValidationAlert from './components/ValidationAlert.vue'
 import VirtualKeyboard from '@/components/business/keyboard/VirtualKeyboard.vue'
@@ -13,6 +15,7 @@ import './styles/PersonalInfoFormView.css'
 
 const router = useRouter()
 const userStore = useUserStore()
+const consultationStore = useConsultationStore()
 const ttsStore = useTTSStore()
 const { status: speechStatus, errorMessage: speechError, startAndWait: startSpeechAndWait, stop: stopSpeech } = useSpeechRecognition()
 
@@ -23,6 +26,7 @@ const isVoiceBusy = ref(false)
 const showVoiceToast = ref(false)
 const showErrorToast = ref(false)
 const errorToastText = ref('')
+const isSubmitting = ref(false)
 
 onMounted(async () => {
   // 文字直接显示完整内容，TTS 作为背景音播放
@@ -182,6 +186,9 @@ const onStopRecording = () => {
 }
 
 const onSubmit = () => {
+  // 接口请求中，防止重复点击
+  if (isSubmitting.value) return
+
   closeKeyboard()
 
   if (!form.value.name || !form.value.gender || !form.value.age || !form.value.height || !form.value.weight || !form.value.phone) {
@@ -209,7 +216,8 @@ const onReEdit = () => {
   showValidationAlert.value = false
 }
 
-const submitData = () => {
+const submitData = async () => {
+  // 先保存到 userStore（localStorage 持久化，用于页面刷新恢复）
   userStore.setUserInfo({
     name: form.value.name,
     gender: form.value.gender as GenderType,
@@ -219,8 +227,37 @@ const submitData = () => {
     phone: form.value.phone
   })
 
-  userStore.checkUserStatus(form.value.phone)
-  router.push('/consultation/welcome')
+  // 调用后端接口创建问诊会话
+  isSubmitting.value = true
+  try {
+    const sessionData = await createSession(userStore.userInfo)
+
+    // 成功：存储会话标识到 consultationStore
+    consultationStore.setSessionData(sessionData)
+    consultationStore.setQuestionModel('1')
+
+    // 设置新老用户标识
+    userStore.setIsNewUser(sessionData.isNewCustomer)
+
+    if (import.meta.env.DEV) {
+      console.log('✅ 会话创建成功:', sessionData)
+    }
+
+    // 跳转到问诊欢迎页
+    router.push('/consultation/welcome')
+  } catch (e) {
+    // 失败：弹错误提示，留在当前页
+    const msg = e instanceof Error ? e.message : '网络异常，请重试'
+    showErrorToast.value = true
+    errorToastText.value = msg
+    setTimeout(() => { showErrorToast.value = false }, 5000)
+
+    if (import.meta.env.DEV) {
+      console.error('❌ 会话创建失败:', e)
+    }
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -317,7 +354,9 @@ const submitData = () => {
         </div>
 
         <!-- 将按钮放入滚动容器，防止被遮挡 -->
-        <button class="submit-btn" @click="onSubmit">确认提交</button>
+        <button class="submit-btn" :disabled="isSubmitting" @click="onSubmit">
+          {{ isSubmitting ? '提交中...' : '确认提交' }}
+        </button>
       </div>
     </div>
 

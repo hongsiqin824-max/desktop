@@ -181,6 +181,11 @@
   transform: scale(0.98);
 }
 
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* 自定义轻量提示弹窗（轻提示/弹窗） */
 .custom-toast-overlay {
   position: absolute;
