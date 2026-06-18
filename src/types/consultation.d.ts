@@ -236,6 +236,7 @@ export interface IAnalysisData {
   tongueCoatingColor: string  // 舌苔颜色：白/浅黄/深黄
   tongueColor: string
   tongueSize: string
+  tongueBottom: string
   pulseType: string
   pulseRate: number
   isAbnormal: boolean

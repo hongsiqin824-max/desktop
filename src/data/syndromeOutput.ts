@@ -405,25 +405,28 @@ export function formatSyndromeOutput(output: ISyndromeOutput): string {
   lines.push(`${output.diseaseCategory} · ${output.mainSymptom}`)
   lines.push('')
   lines.push('【二、主要症状】')
-  output.mainSymptoms.forEach((s, i) => {
+  const mainSymptoms = output.mainSymptoms ?? []
+  mainSymptoms.forEach((s: string, i: number) => {
     lines.push(`  ${i + 1}. ${s}`)
   })
   lines.push('')
   lines.push('【三、辨证结果】')
-  lines.push(`证型：${output.syndromeResult}`)
+  lines.push(`证型：${output.syndromeResult ?? ''}`)
   lines.push('')
-  lines.push(output.syndromeDetail)
+  lines.push(output.syndromeDetail ?? '')
   lines.push('')
   lines.push('【四、经络图示】')
-  lines.push(output.illustration)
+  lines.push(output.illustration ?? '')
   lines.push('')
   lines.push('【五、调理方案】')
-  output.conditioningPlan.forEach((p, i) => {
+  const plans = output.conditioningPlan ?? []
+  plans.forEach((p: string, i: number) => {
     lines.push(`  ${i + 1}. ${p}`)
   })
   lines.push('')
   lines.push('【六、产品配套】')
-  output.productRecommendation.forEach((p, i) => {
+  const products = output.productRecommendation ?? []
+  products.forEach((p: string, i: number) => {
     lines.push(`  ${i + 1}. ${p}`)
   })
 

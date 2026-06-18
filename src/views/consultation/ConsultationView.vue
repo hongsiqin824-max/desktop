@@ -1126,7 +1126,7 @@ async function saveAndFetchFollowUp() {
       consultationStore.setFollowUpQuestions(result.questionList)
       detailIsFirstQuestion.value = false
       // 展示第一个追问问题
-      const firstQ = result.questionList[0]
+      const firstQ = result.questionList[0]!
       const questionText = buildDoctorQuestionText(firstQ)
       await doctorSay(questionText)
       return
@@ -1163,7 +1163,7 @@ async function saveFollowUpAndFetchProgram() {
       consultationStore.setProgramQuestions(result.questionList)
       detailIsFirstQuestion.value = false
       // 展示第一个补充问题
-      const firstQ = result.questionList[0]
+      const firstQ = result.questionList[0]!
       const questionText = buildDoctorQuestionText(firstQ)
       await doctorSay(questionText)
       return

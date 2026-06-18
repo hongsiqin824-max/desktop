@@ -73,7 +73,7 @@ function findBestMatch(
     const candidates = backendOptions.filter(opt => opt.koiOption.includes(feature))
 
     if (candidates.length === 0) return null
-    if (candidates.length === 1) return candidates[0]
+    if (candidates.length === 1) return candidates[0] ?? null
 
     // 多个候选：按字符重叠度排序（高→低），相同则选名称最短的
     candidates.sort((a, b) => {
@@ -81,7 +81,7 @@ function findBestMatch(
       if (overlapDiff !== 0) return overlapDiff
       return a.koiOption.length - b.koiOption.length
     })
-    return candidates[0]
+    return candidates[0] ?? null
   }
 
   // 变体表无对应条目 → 不匹配（避免共享"苔"/"舌"等通用字导致误匹配）
@@ -93,7 +93,7 @@ function lookupVariant(aiValue: string, variantTable: Record<string, string>): s
   const sortedKeys = Object.keys(variantTable).sort((a, b) => b.length - a.length)
   for (const key of sortedKeys) {
     if (aiValue === key || aiValue.includes(key) || key.includes(aiValue)) {
-      return variantTable[key]
+      return variantTable[key] ?? null
     }
   }
   return null
@@ -275,8 +275,10 @@ export function matchTongueQuestions(
       return cloned
     }
 
+    const variants = fieldVariants[matchedField]!
+
     // 获取 AI 返回的实际值（解析 JSON 格式，可能返回多个值）
-    const aiValueRaw = (aiReport as Record<string, string>)[matchedField]
+    const aiValueRaw = String((aiReport as Record<string, unknown>)[matchedField] ?? '')
     if (!aiValueRaw) {
       // AI 没有返回这个字段的值
       markAllUnselected(cloned)
@@ -296,12 +298,12 @@ export function matchTongueQuestions(
       const matchedOption = findBestMatch(
         aiValue,
         cloned.kytOptions,
-        fieldVariants[matchedField],
+        variants,
       )
       if (matchedOption) {
         matchedOptionIds.add(matchedOption.koiId)
         if (import.meta.env.DEV) {
-          const feature = lookupVariant(aiValue, fieldVariants[matchedField])
+          const feature = lookupVariant(aiValue, variants)
           const optionNames = cloned.kytOptions.map(o => o.koiOption)
           console.log(
             `[动态匹配] ${question.kqiName} (${question.kqiCode}): ` +
