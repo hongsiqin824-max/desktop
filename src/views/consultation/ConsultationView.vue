@@ -727,7 +727,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
       // 从 kytFormulas 提取 F-code → 中文名映射
       const fCodeMap: Record<string, string> = {}
       if (obj?.kytFormulas?.length > 0) {
-        for (const f of obj.kytFormulas as any[]) {
+        for (const f of obj.kytFormulas as { kfName?: string; kfNameCn?: string }[]) {
           if (f.kfName && /^F\d+$/.test(f.kfName) && f.kfNameCn) {
             fCodeMap[f.kfName] = f.kfNameCn
           }
@@ -743,7 +743,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
           try {
             const parsed = JSON.parse(conclusionItem.value)
             if (Array.isArray(parsed)) {
-              syndromeConclusion = parsed.map((item: any) => {
+              syndromeConclusion = parsed.map((item: { key?: string; val?: string }) => {
                 const code = String(item.key || '')
                 const cnName = fCodeMap[code]
                 // 显示格式：中文名 (F8) 或原始 code（若没有映射）
@@ -1074,8 +1074,9 @@ async function saveAnswersWithRetry(phase: string): Promise<void> {
       })
       console.log(`[详细问诊] ✅ ${phase}答案保存成功（${answers.length} 条）`)
       return
-    } catch (e: any) {
-      const msg = e?.message || ''
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      const msg = err?.message || ''
       const match = msg.match(/questionId[:\s：]+([A-Fa-f0-9]+)/i)
 
       if (match && (msg.includes('单选') || msg.includes('选择一个'))) {

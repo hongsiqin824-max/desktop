@@ -364,6 +364,7 @@ export function useTonguePulseCapture() {
       tongueCoatingColor,
       tongueColor,
       tongueSize,
+      tongueBottom: '正常', // TODO: 从舌下图像分析获取
       pulseType,
       pulseRate: pulse.maibo,
       isAbnormal: false, // TODO: 根据脉象/舌象判断是否异常
