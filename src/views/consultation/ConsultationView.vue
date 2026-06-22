@@ -10,6 +10,9 @@ import { useTTSStore } from '@/stores/global/tts'
 import type { PersonaType } from '@/types/consultation'
 import { useLLM } from '@/composables/useLLM'
 import type { IIntentResult } from '@/types/llm'
+import { fetchLLMCompletion } from '@/api/llm'
+import { buildInterpretationMessages, parseInterpretationResult } from '@/data/llmPrompt'
+import type { IInterpretationContext } from '@/data/llmPrompt'
 import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
 import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput, IDetailAnswer } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
@@ -146,6 +149,7 @@ const showErrorToast = ref(false)
 const errorToastText = ref('')
 const isSkipping = ref(false) // 用户主动跳过朗读时设为 true，阻止 onError toast 弹出
 let lastDoctorFullText = '' // 记录当前正在朗读的医生完整文本，跳过时用于强制补全文字
+let interpretationAbortController: AbortController | null = null // Phase 2 LLM 解读请求控制器
 
 // ── 异常回答关键词 ────────────────────────────────────────────
 const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
@@ -269,6 +273,8 @@ const clearTimers = () => {
   if (captureProgressIntervalId.value) { clearInterval(captureProgressIntervalId.value); captureProgressIntervalId.value = null }
   abortLLM()
   ttsStore.stop()
+  // 取消 Phase 2 解读 LLM 请求（防止页面离开后回调写入已清空的数据）
+  if (interpretationAbortController) { interpretationAbortController.abort(); interpretationAbortController = null }
   isCapturing.value = false
   captureType.value = null
   captureProgress.value = 0
@@ -616,6 +622,10 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   const step = FLOW_STEPS[stepId]
   let text = step.doctorText
 
+  // ── Phase 2 解读所需的函数级变量（由 syndrome_output 块内赋值，Phase 2 块读取）──
+  let phase2Output: ISyndromeOutput | null = null
+  let phase2KytFormulas: any[] = []
+
   if (stepId === 'severity') {
     text = `请问您的【${currentSymptom.value}】严重吗？`
   }
@@ -708,6 +718,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
 
     // ── 获取辨证结果：computeAnswerSheet（触发计算） + getComputeAnswerRes（取结果）──
     let output: ISyndromeOutput
+    let savedKytFormulas: any[] = [] // ★ 提升到 try 外，供 Phase 2 LLM 解读使用
     const mockOutput = () => generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
 
     // 1. 触发后端计算
@@ -723,6 +734,9 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     try {
       const resData = await getComputeAnswerRes(consultationStore.answerSheetId)
       const obj = resData.obj
+
+      // 保存方剂详情供 Phase 2 LLM 解读使用
+      savedKytFormulas = obj?.kytFormulas || []
 
       // 从 kytFormulas 提取 F-code → 中文名映射
       const fCodeMap: Record<string, string> = {}
@@ -786,6 +800,9 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
 
     syndromeOutputData.value = output
     consultationStore.setSyndromeOutput(output)
+    // 保存到函数级变量，供 Phase 2 解读块读取
+    phase2Output = output
+    phase2KytFormulas = savedKytFormulas
     text = '好的，根据您提供的所有信息，辨证分析已经完成，以下是您的辨证分析报告：'
   }
 
@@ -797,7 +814,108 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   } else if (stepId === 'self_feature_summary') {
     await doctorSay(text, 800); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg && selfFeature.selfFeatureRecords.value.length > 0) lastMsg.type = 'summary'
   } else if (stepId === 'syndrome_output') {
+    // ── Phase 1：朗读引导语 + 报告卡片已渲染 ──
     await doctorSay(text, 1200); if (goToStepGeneration.value !== gen) return; const lastMsg = messages.value[messages.value.length - 1]; if (lastMsg) lastMsg.type = 'syndrome'
+
+    // ── Phase 2：LLM 生成辨证解读 + 处方解读（仅真实数据模式）──
+    if (phase2Output?.isRealData && (phase2Output.syndromeConclusion?.length || phase2Output.recommendations?.length)) {
+      console.log('[辨证解读] Phase 2 开始：准备调用 LLM 生成解读')
+
+      // 标记加载中（报告卡片底部显示"正在解读"指示器）
+      if (syndromeOutputData.value) syndromeOutputData.value.interpretationLoading = true
+
+      // 过渡话术 TTS 和 LLM 并行启动
+      const transitionText = '让我为您详细解读一下辨证结果和处方。'
+
+      // 构建 LLM 上下文
+      const interpretationContext: IInterpretationContext = {
+        userInfo: { name: phase2Output.userInfo?.name || '', sex: phase2Output.userInfo?.sex || '', age: phase2Output.userInfo?.age || '' },
+        mainSymptom: currentSymptom.value,
+        severity: consultationStore.severityLevel || '未评估',
+        detailSummary: buildDetailSummary(detail.detailAnswers.value),
+        syndromeConclusion: phase2Output.syndromeConclusion || [],
+        kytFormulas: phase2KytFormulas,
+        recommendations: phase2Output.recommendations || [],
+      }
+      console.log('[辨证解读] 上下文已构建:', {
+        症状摘要长度: interpretationContext.detailSummary.length,
+        结论数: interpretationContext.syndromeConclusion.length,
+        方剂数: interpretationContext.kytFormulas.length,
+        推荐数: interpretationContext.recommendations.length,
+      })
+
+      // 创建 AbortController 并启动 LLM 请求
+      interpretationAbortController = new AbortController()
+      const llmMessages = buildInterpretationMessages(interpretationContext)
+
+      // 并行：TTS 朗读过渡语 + LLM 生成解读
+      const llmPromise = fetchLLMCompletion(llmMessages, {
+        maxTokens: 1024,
+        temperature: 0.3,
+        signal: interpretationAbortController.signal,
+      })
+
+      // 15 秒超时保护
+      let interpretationTimeoutId: ReturnType<typeof setTimeout> = undefined!
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        interpretationTimeoutId = setTimeout(() => reject(new Error('解读生成超时（15s）')), 15000)
+      })
+
+      // TTS 朗读过渡语（~2s，与 LLM 并行）
+      await doctorSay(transitionText)
+      if (goToStepGeneration.value !== gen) {
+        interpretationAbortController.abort()
+        interpretationAbortController = null
+        clearTimeout(interpretationTimeoutId)
+        return
+      }
+
+      // 等待 LLM 返回（TTS 期间可能已经返回了）
+      try {
+        const raw = await Promise.race([llmPromise, timeoutPromise])
+        clearTimeout(interpretationTimeoutId)
+        interpretationAbortController = null
+
+        if (goToStepGeneration.value !== gen) {
+          console.log('[辨证解读] 代次已变化，丢弃 LLM 结果')
+          return
+        }
+
+        console.log('[辨证解读] LLM 原始返回长度:', raw.length)
+        const result = parseInterpretationResult(raw)
+
+        if (result && syndromeOutputData.value) {
+          // 安全赋值：确认 syndromeOutputData 未被清空
+          if (result.syndromeInterpretation) {
+            syndromeOutputData.value.syndromeInterpretation = result.syndromeInterpretation
+          }
+          if (result.prescriptionInterpretation) {
+            syndromeOutputData.value.prescriptionInterpretation = result.prescriptionInterpretation
+          }
+          // 同步到 store（确保导出数据时包含解读内容）
+          consultationStore.setSyndromeOutput(syndromeOutputData.value)
+          console.log('[辨证解读] ✅ 解读已生成并渲染:', {
+            辨证解读长度: result.syndromeInterpretation.length,
+            处方解读长度: result.prescriptionInterpretation.length,
+          })
+          scrollToBottom()
+        } else {
+          console.warn('[辨证解读] ⚠️ LLM 返回解析失败或字段为空')
+        }
+      } catch (e) {
+        clearTimeout(interpretationTimeoutId)
+        interpretationAbortController = null
+        if (e instanceof Error && e.name === 'AbortError') {
+          console.log('[辨证解读] LLM 请求已取消（用户离开）')
+        } else {
+          console.warn('[辨证解读] ⚠️ LLM 调用失败，跳过解读:', e)
+        }
+      } finally {
+        if (syndromeOutputData.value) {
+          syndromeOutputData.value.interpretationLoading = false
+        }
+      }
+    }
   } else if (stepId === 'analysis_normal') {
     // 静默过渡：不播报，等 autoAdvance 自动跳到 detail_transition
   } else if (text) {
@@ -1190,36 +1308,6 @@ async function saveProgramAnswers() {
   console.log('[详细问诊] → 进入 detail_summary（汇总确认）')
   consultationStore.detailPhase = 'done'
   await goToStep('detail_summary')
-}
-
-// ── 处理选项点击 ─────────────────────────────────────────────
-const onOptionClick = async (label: string, nextStep: StepIdType, payload?: string) => {
-  saveSnapshot(); clearTimers()
-
-  if (currentStepId.value === 'detail_question') {
-    // API 驱动模式
-    if (consultationStore.getCurrentQuestion()) {
-      await handleApiDetailOption(label); return
-    }
-    // 本地降级模式
-    await detail.handleDetailOptionClick(label); return
-  }
-  if (currentStepId.value === 'self_feature_question') {
-    await selfFeature.handleSelfFeatureOptionClick(label); return
-  }
-
-  // 舌脉分析确认：保存答案到后端 + 处理异常分支
-  if (currentStepId.value === 'analysis_review' && label === '确认相符') {
-    await handleAnalysisConfirm()
-    // 异常分支：提示用户
-    if (analysisData.value?.isAbnormal) {
-      await goToStep('analysis_abnormal'); return
-    }
-  }
-
-  messages.value.push({ role: 'user', text: label })
-  await scrollToBottom()
-  await goToStep(nextStep, payload)
 }
 
 // ── 第三层级兜底追问 ─────────────────────────────────────────
@@ -1754,9 +1842,25 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
               <div class="syndrome-result-detail" style="white-space: pre-wrap; line-height: 1.8;">{{ rec.value }}</div>
             </div>
           </div>
-        </template>
 
-        <!-- ── Mock 降级数据 ── -->
+          <!-- 解读加载指示器（Phase 2 LLM 生成中） -->
+          <div v-if="syndromeOutputData.interpretationLoading" class="syndrome-card-section syndrome-interpreting">
+            <span class="thinking-icon">🤔</span>
+            <span class="interpreting-text">正在为您详细解读辨证结果…</span>
+          </div>
+
+          <!-- 辨证解读（LLM 生成） -->
+          <div v-if="syndromeOutputData.syndromeInterpretation" class="syndrome-card-section">
+            <div class="syndrome-section-title">辨证解读</div>
+            <div class="syndrome-section-content syndrome-interpretation-text">{{ syndromeOutputData.syndromeInterpretation }}</div>
+          </div>
+
+          <!-- 处方解读（LLM 生成） -->
+          <div v-if="syndromeOutputData.prescriptionInterpretation" class="syndrome-card-section">
+            <div class="syndrome-section-title">处方解读</div>
+            <div class="syndrome-section-content syndrome-prescription-text">{{ syndromeOutputData.prescriptionInterpretation }}</div>
+          </div>
+        </template>
         <template v-else>
           <div class="syndrome-card-section">
             <div class="syndrome-section-title">一、病种 + 主症</div>
@@ -1822,18 +1926,6 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
           <span class="typing-cursor"></span>
         </div>
       </div>
-    </div>
-
-    <!-- 选项按钮组：全局隐藏，用户通过语音/文字自由表达，系统自动识别意图 -->
-    <div class="options-area" v-if="false">
-      <button
-        v-for="opt in currentStep.options"
-        :key="opt.label"
-        class="option-btn"
-        @click="onOptionClick(opt.label, opt.nextStep, opt.payload)"
-      >
-        {{ opt.label }}
-      </button>
     </div>
 
     <!-- 底部输入区：语音输入按钮（所有非终步骤均可使用） -->

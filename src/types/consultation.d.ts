@@ -264,6 +264,10 @@ export interface ISyndromeOutput {
   modelName?: string
   syndromeConclusion?: { key: string; val: string }[]
   recommendations?: { key: string; value: string }[]
+  // LLM 解读（Phase 2 异步填充）
+  syndromeInterpretation?: string      // 辨证解读
+  prescriptionInterpretation?: string  // 处方解读
+  interpretationLoading?: boolean      // 解读是否正在生成
 }
 
 // ── 重新选择快照类型 ────────────────────────────────────────────

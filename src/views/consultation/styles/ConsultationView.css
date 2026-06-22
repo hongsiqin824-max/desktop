@@ -259,36 +259,6 @@
   50% { opacity: 0.6; }
 }
 
-/* ── 选项按钮组 ─────────────────────────────────────────── */
-.options-area {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  padding: 0 60px;
-  margin-bottom: 20px;
-  justify-content: center;
-}
-
-.option-btn {
-  height: 100px;
-  padding: 0 48px;
-  background: var(--option-bg);
-  border: 3px solid var(--option-border);
-  border-radius: 50px;
-  font-size: 40px;
-  color: var(--option-text);
-  font-weight: bold;
-  transition: all 0.18s ease;
-  box-shadow: var(--option-shadow);
-}
-
-.option-btn:active {
-  background: var(--option-active-bg);
-  color: var(--option-active-text);
-  border-color: var(--option-active-border);
-  transform: scale(0.96);
-}
-
 /* ── 底部输入区 ──────────────────────────────────────────── */
 .input-area {
   flex: 0 0 auto;
@@ -905,4 +875,32 @@
   color: var(--syndrome-footer-tip-text);
   text-align: center;
   line-height: 1.6;
+}
+
+/* ── 辨证解读 / 处方解读（Phase 2 LLM 生成）────────────── */
+.syndrome-interpreting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  color: var(--theme-text-sub);
+  font-size: 28px;
+  animation: syndromeInterpretingPulse 1.5s ease-in-out infinite;
+}
+
+.syndrome-interpreting .interpreting-text {
+  letter-spacing: 1px;
+}
+
+@keyframes syndromeInterpretingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.syndrome-interpretation-text,
+.syndrome-prescription-text {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  font-size: 30px;
+  color: var(--syndrome-content-text);
 }

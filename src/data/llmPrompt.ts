@@ -462,3 +462,143 @@ export function extractPhoneLocally(text: string): string | null {
 
   return null
 }
+
+// ── 辨证解读 + 处方解读：LLM 生成详细解读文本 ──────────────────
+
+/** 构建解读请求的上下文数据 */
+export interface IInterpretationContext {
+  /** 患者基本信息 */
+  userInfo: { name: string; sex: string; age: string }
+  /** 主症 */
+  mainSymptom: string
+  /** 严重程度 */
+  severity: string
+  /** 症状摘要（已格式化的文本） */
+  detailSummary: string
+  /** 辨证结论（F-code 映射后） */
+  syndromeConclusion: { key: string; val: string }[]
+  /** 方剂详情（后端 kytFormulas 原始数据） */
+  kytFormulas: any[]
+  /** 推荐方案（后端 tuijianList 原始数据） */
+  recommendations: { key: string; value: string }[]
+}
+
+/** LLM 解读结果 */
+export interface IInterpretationResult {
+  syndromeInterpretation: string
+  prescriptionInterpretation: string
+}
+
+const INTERPRETATION_SYSTEM_PROMPT = `你是一位经验丰富的中医师，负责为患者解读辨证分析报告。你的解读需要通俗易懂、专业准确，像老中医面对面向患者解释一样。
+
+## 输出要求
+
+### 1. syndromeInterpretation（辨证解读，150-300字）
+- 用通俗语言解释每个辨证结论的含义
+- 说明为什么是这个证型（结合患者症状）
+- 解释分数的含义：≥80分表示高度吻合，60-79分表示较为吻合，<60分表示轻度倾向
+- 如果结论中有多个证型，说明它们之间的关系
+- 语气：温和、专业、让患者安心
+
+### 2. prescriptionInterpretation（处方解读，每个方剂100-200字）
+- 逐一解读每个方剂：
+  - 方剂名称和主要功效
+  - 组方思路（为什么选这个方）
+  - 如果提供了药物组成，说明几味关键药物的作用
+  - 服用注意事项
+- 如果有推荐方案（茶饮、中成药等），也简要说明其作用
+- 结尾统一加一句："以上解读仅供参考，具体用药请遵医嘱。"
+
+## 格式要求
+- 段落之间用换行符（\\n）分隔
+- 不要使用 markdown 标记（不要用 #、*、- 等）
+- 不要输出 JSON 以外的任何文字
+
+## 输出格式
+只返回纯JSON，不要有任何其它文字或markdown标记：
+{"syndromeInterpretation":"...","prescriptionInterpretation":"..."}`
+
+export function buildInterpretationMessages(
+  context: IInterpretationContext,
+): ILlmRequestMessage[] {
+  const conclusionText = context.syndromeConclusion
+    .map(c => `- ${c.key}：${c.val}分`)
+    .join('\n')
+
+  const formulasText = context.kytFormulas.length > 0
+    ? context.kytFormulas.map((f: any) => {
+        const name = f.kfNameCn || f.kfName || '未知方剂'
+        const code = f.kfName || ''
+        const ingredients = f.kfIngredients || f.kfComposition || ''
+        const dosage = f.kfDosage || f.kfUsage || ''
+        let line = `- ${name}${code ? ` (${code})` : ''}`
+        if (ingredients) line += `，组成：${ingredients}`
+        if (dosage) line += `，用法：${dosage}`
+        return line
+      }).join('\n')
+    : '（未提供方剂详情）'
+
+  const recommendationsText = context.recommendations.length > 0
+    ? context.recommendations.map(r => `【${r.key}】\n${r.value}`).join('\n\n')
+    : '（无推荐方案）'
+
+  const userPrompt = `## 患者信息
+姓名：${context.userInfo.name}，性别：${context.userInfo.sex}，年龄：${context.userInfo.age}
+
+## 主症与严重程度
+主症：${context.mainSymptom}
+严重程度：${context.severity || '未评估'}
+
+## 症状摘要
+${context.detailSummary || '（无详细症状记录）'}
+
+## 辨证结论
+${conclusionText || '（无辨证结论）'}
+
+## 方剂详情
+${formulasText}
+
+## 推荐方案
+${recommendationsText}
+
+请根据以上数据，生成辨证解读和处方解读。`
+
+  return [
+    { role: 'system', content: INTERPRETATION_SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt },
+  ]
+}
+
+/** 解析 LLM 返回的解读结果（复用项目已有的容错模式） */
+export function parseInterpretationResult(raw: string): IInterpretationResult | null {
+  try {
+    // 第 1 层：从可能包含 markdown/杂文的返回中提取 JSON
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      console.warn('[辨证解读] 返回中未找到 JSON')
+      return null
+    }
+
+    // 第 2 层：JSON 解析
+    const parsed = JSON.parse(jsonMatch[0])
+
+    // 第 3 层：字段兜底
+    const syndromeInterpretation = typeof parsed.syndromeInterpretation === 'string'
+      ? parsed.syndromeInterpretation
+      : ''
+    const prescriptionInterpretation = typeof parsed.prescriptionInterpretation === 'string'
+      ? parsed.prescriptionInterpretation
+      : ''
+
+    // 至少有一个有效字段才返回结果
+    if (!syndromeInterpretation && !prescriptionInterpretation) {
+      console.warn('[辨证解读] 两个解读字段均为空')
+      return null
+    }
+
+    return { syndromeInterpretation, prescriptionInterpretation }
+  } catch (e) {
+    console.warn('[辨证解读] JSON 解析失败:', e)
+    return null
+  }
+}
