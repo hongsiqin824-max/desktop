@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API 参考 - PulseCollectionPenClient</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><strong>PulseCollectionPenClient 开发文档</strong><span>API 参考</span></div>
+      <nav class="nav">
+        <a href="./index.html">首页</a><a href="./getting-started.html">接入</a>
+        <a class="active" href="./api-reference.html">API</a><a href="./events.html">事件</a><a href="./faq.html">FAQ</a>
+      </nav>
+    </header>
+
+    <div class="detail-layout">
+      <aside class="sidebar panel">
+        <h3>本页目录</h3>
+        <a class="active" href="#connection">设备连接</a>
+        <a href="#collection">采集控制</a>
+        <a href="#device">设备控制</a>
+        <a href="#analysis">分析与快照</a>
+        <a href="#return">返回与错误码</a>
+      </aside>
+      <main>
+        <section class="detail-card" id="connection">
+          <h2>设备连接</h2>
+          <table class="table">
+            <tr><th>成员</th><th>说明</th></tr>
+            <tr><td><code>create(options?)</code></td><td>创建或返回全局单例客户端。</td></tr>
+            <tr><td><code>checkEnv()</code></td><td>检查安全上下文和 Web Bluetooth 支持情况。</td></tr>
+            <tr><td><code>requestDevice(options?)</code></td><td>打开浏览器蓝牙选择窗口并返回设备。</td></tr>
+            <tr><td><code>getAuthorizedDevices()</code></td><td>获取浏览器已授权设备；不弹出选择窗口。</td></tr>
+            <tr><td><code>connectAuthorizedDevice(device, options?)</code></td><td>直接连接已授权设备。</td></tr>
+            <tr><td><code>connect(device?, options?)</code></td><td>建立 GATT 连接并初始化协议通道。</td></tr>
+            <tr><td><code>disconnect()</code></td><td>停止通知、清理采集状态并断开连接。</td></tr>
+            <tr><td><code>reconnect()</code></td><td>使用最近一次设备对象重新连接。</td></tr>
+            <tr><td><code>getDevice()</code></td><td>返回当前设备对象或 <code>null</code>。</td></tr>
+            <tr><td><code>isConnected</code></td><td>GATT 是否已连接。</td></tr>
+            <tr><td><code>isProtocolReady</code></td><td>写入与通知特征是否已就绪。</td></tr>
+            <tr><td><code>canExecute</code></td><td>连接和协议通道是否均可用。</td></tr>
+          </table>
+        </section>
+
+        <section class="detail-card" id="collection">
+          <h2>采集控制</h2>
+          <table class="table">
+            <tr><th>方法</th><th>说明</th></tr>
+            <tr><td><code>setPulsePosition('cun' | 'guan' | 'chi')</code></td><td>设置寸、关、尺采集部位。设备上报后 SDK 自动开始收集。</td></tr>
+            <tr><td><code>startCollection(position?)</code></td><td>可选：清空本轮缓存并设置采集部位；不会向设备发送开始采集命令。</td></tr>
+            <tr><td><code>clearCollection()</code></td><td>清空接收缓冲、当前档和已完成记录。</td></tr>
+            <tr><td><code>analyzePulseData({ float, middle, deep })</code></td><td>使用数值数组或实时记录手动执行脉象分析。</td></tr>
+          </table>
+        </section>
+
+        <section class="detail-card" id="device">
+          <h2>设备控制</h2>
+          <table class="table">
+            <tr><th>方法</th><th>说明</th></tr>
+            <tr><td><code>readDeviceId()</code></td><td>读取设备编号，结果通过 <code>device-id</code> 事件返回。</td></tr>
+            <tr><td><code>queryDeviceStatus()</code></td><td>查询设备工作状态。</td></tr>
+            <tr><td><code>enterStandby()</code></td><td>切换到待机状态。</td></tr>
+            <tr><td><code>enterSearch()</code></td><td>切换到寻脉状态。</td></tr>
+            <tr><td><code>enterCollect()</code></td><td>切换到采脉状态。</td></tr>
+            <tr><td><code>toggleDeviceMode()</code></td><td>发送设备模式切换命令。</td></tr>
+          </table>
+        </section>
+
+        <section class="detail-card" id="analysis">
+          <h2>分析与状态快照</h2>
+          <pre><code>const report = client.analyzePulseData({
+  float: floatRecords,
+  middle: middleRecords,
+  deep: deepRecords,
+});
+
+const snapshot = client.getSnapshot();</code></pre>
+          <p><code>getSnapshot()</code> 返回连接状态、协议状态、设备信息、采集部位、压力等级、设备状态、当前进度、最近错误和公开配置。</p>
+        </section>
+
+        <section class="detail-card" id="return">
+          <h2>返回格式与错误码</h2>
+          <pre><code>{
+  code: 0 | -1;
+  message: string;
+  errorCode?: PenErrorCode;
+}</code></pre>
+          <table class="table">
+            <tr><th>错误码</th><th>说明</th></tr>
+            <tr><td><code>ENV_NOT_SUPPORTED</code></td><td>环境不支持 Web Bluetooth。</td></tr>
+            <tr><td><code>REQUEST_CANCELLED / REQUEST_FAILED</code></td><td>用户取消或设备请求失败。</td></tr>
+            <tr><td><code>NO_DEVICE / NO_GATT</code></td><td>没有设备或设备不支持 GATT。</td></tr>
+            <tr><td><code>NOT_CONNECTED / PROTOCOL_NOT_READY</code></td><td>连接或协议通道尚未就绪。</td></tr>
+            <tr><td><code>INVALID_POSITION / COLLECTION_NOT_READY</code></td><td>采集部位或采集前置条件无效。</td></tr>
+            <tr><td><code>CONNECT_FAILED / DISCONNECT_FAILED / RECONNECT_FAILED</code></td><td>连接生命周期操作失败。</td></tr>
+            <tr><td><code>WRITE_FAILED</code></td><td>设备命令写入失败。</td></tr>
+          </table>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>脉诊笔采集控制台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #17202b;
+      --muted: #667085;
+      --line: #d8dee7;
+      --primary: #16745a;
+      --primary-hover: #105d48;
+      --danger: #b42318;
+      --warning: #946200;
+      --success: #137333;
+      --info-bg: #eef6ff;
+      --warning-bg: #fff8e6;
+      --success-bg: #eefbf3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      color: #fff;
+      background: var(--primary);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    button.secondary {
+      color: var(--primary);
+      background: #fff;
+    }
+
+    button.danger {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: #fff;
+    }
+
+    button:disabled,
+    select:disabled {
+      color: #98a2b3;
+      border-color: #d0d5dd;
+      background: #f2f4f7;
+      cursor: not-allowed;
+    }
+
+    main {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 36px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 16px;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 25px;
+    }
+
+    h2 {
+      font-size: 17px;
+    }
+
+    .subtitle {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .connection-state {
+      min-width: 132px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .connection-state.connected {
+      color: var(--success);
+      border-color: #a7d7b3;
+      background: var(--success-bg);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .sidebar,
+    .content {
+      display: grid;
+      gap: 16px;
+    }
+
+    section {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--text);
+      background: #fff;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .actions>button {
+      flex: 1 1 auto;
+    }
+
+    .hint {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-left: 3px solid #4b8bd8;
+      color: #344054;
+      background: var(--info-bg);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .hint.warning {
+      border-color: #d99a19;
+      color: var(--warning);
+      background: var(--warning-bg);
+    }
+
+    .hint.success {
+      border-color: #2e9d58;
+      color: var(--success);
+      background: var(--success-bg);
+    }
+
+    progress {
+      width: 100%;
+      height: 16px;
+      margin-top: 12px;
+    }
+
+    .pressure-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pressure-state {
+      min-height: 64px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    .pressure-state strong,
+    .pressure-state span {
+      display: block;
+    }
+
+    .pressure-state span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pressure-state.active {
+      border-color: #e1b349;
+      background: var(--warning-bg);
+    }
+
+    .pressure-state.done {
+      border-color: #9ed1aa;
+      background: var(--success-bg);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .status-cell {
+      min-width: 0;
+      padding: 12px;
+      border-right: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .status-cell:last-child {
+      border-right: 0;
+    }
+
+    .status-cell span,
+    .status-cell strong {
+      display: block;
+    }
+
+    .status-cell span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-cell strong {
+      margin-top: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+
+    #chart-container {
+      width: 100%;
+      height: 330px;
+    }
+
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--line);
+    }
+
+    .analysis-item {
+      min-height: 68px;
+      padding: 11px;
+      background: #fff;
+    }
+
+    .analysis-item strong,
+    .analysis-item span {
+      display: block;
+    }
+
+    .analysis-item span {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #log {
+      height: 220px;
+      overflow: auto;
+      padding: 12px;
+      border-radius: 6px;
+      color: #d7f5df;
+      background: #101820;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 900px) {
+
+      header,
+      .workspace {
+        display: block;
+      }
+
+      .connection-state {
+        margin-top: 12px;
+        text-align: left;
+      }
+
+      .sidebar {
+        margin-bottom: 16px;
+      }
+
+      .status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .status-cell:nth-child(2) {
+        border-right: 0;
+      }
+
+      .status-cell:nth-child(-n + 2) {
+        border-bottom: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 560px) {
+
+      .pressure-grid,
+      .analysis-grid,
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .status-cell {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>脉诊笔采集控制台</h1>
+        <p class="subtitle">连接设备后完成寸、关、尺的浮中沉采集与脉象分析。</p>
+      </div>
+      <div class="connection-state" id="connectionState">未连接</div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <section>
+          <div class="section-header">
+            <h2>设备连接</h2>
+          </div>
+          <div class="field">
+            <label for="namePrefix">设备名称前缀</label>
+            <input id="namePrefix" value="MZY" autocomplete="off">
+          </div>
+          <div class="actions">
+            <button id="connectBtn">选择并连接</button>
+            <button id="disconnectBtn" class="danger" disabled>断开</button>
+          </div>
+          <div class="hint" id="connectionHint">连接成功后才可执行设备命令和开始采集。</div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>采集控制</h2>
+          </div>
+          <div class="field">
+            <label for="position">当前采集部位</label>
+            <select id="position">
+              <option value="cun">寸</option>
+              <option value="guan">关</option>
+              <option value="chi">尺</option>
+            </select>
+          </div>
+          <progress id="progress" value="0" max="100"></progress>
+          <div class="hint warning" id="collectTip">请先连接设备。</div>
+          <div class="pressure-grid">
+            <div class="pressure-state" data-pressure="1"><strong>浮</strong><span>未采集</span></div>
+            <div class="pressure-state" data-pressure="3"><strong>中</strong><span>未采集</span></div>
+            <div class="pressure-state" data-pressure="5"><strong>沉</strong><span>未采集</span></div>
+          </div>
+          <div class="actions">
+            <button id="clearBtn" class="secondary">清空当前部位</button>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>设备命令</h2>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="standbyBtn" data-requires="protocol" disabled>待机</button>
+            <button class="secondary" id="searchBtn" data-requires="protocol" disabled>寻脉</button>
+            <button class="secondary" id="collectBtn" data-requires="protocol" disabled>采脉</button>
+            <button class="secondary" id="toggleBtn" data-requires="protocol" disabled>切换模式</button>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="queryStatusBtn" data-requires="protocol" disabled>查询状态</button>
+            <button class="secondary" id="readIdBtn" data-requires="protocol" disabled>读取设备 ID</button>
+          </div>
+        </section>
+      </aside>
+
+      <div class="content">
+        <section>
+          <div class="section-header">
+            <h2>实时状态</h2>
+          </div>
+          <div class="status-grid">
+            <div class="status-cell"><span>设备</span><strong id="deviceName">-</strong></div>
+            <div class="status-cell"><span>设备 ID</span><strong id="deviceId">-</strong></div>
+            <div class="status-cell"><span>协议通道</span><strong id="protocolReady">未就绪</strong></div>
+            <div class="status-cell"><span>按压力度</span><strong id="pressureLevel">-</strong></div>
+            <div class="status-cell"><span>设备状态</span><strong id="deviceStatus">-</strong></div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>实时脉图</h2>
+            <span class="subtitle" id="chartCaption">当前部位：寸</span>
+          </div>
+          <div id="chart-container"></div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>脉象分析</h2>
+            <span class="subtitle">浮中沉全部完成后自动分析</span>
+          </div>
+          <div class="analysis-grid" id="analysisResult">
+            <div class="analysis-item"><strong>脉位</strong><span>-</span></div>
+            <div class="analysis-item"><strong>脉率</strong><span>-</span></div>
+            <div class="analysis-item"><strong>脉力</strong><span>-</span></div>
+            <div class="analysis-item"><strong>紧张度</strong><span>-</span></div>
+            <div class="analysis-item"><strong>流利度</strong><span>-</span></div>
+            <div class="analysis-item"><strong>K 值</strong><span>-</span></div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>运行日志</h2>
+            <button id="clearLogBtn" class="secondary">清空日志</button>
+          </div>
+          <div id="log"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script type="module">
+    import { PulseCollectionPenClient } from './dist/mzy_pulse_collection_pen.esm.js';
+
+    const client = PulseCollectionPenClient.create({
+      namePrefix: 'MZY',
+      verboseLog: true,
+      autoReconnect: true,
+    });
+    const MAX_POINTS = 100;
+    const MAX_LOG_LINES = 300;
+    const CHART_FLUSH_INTERVAL_MS = 50;
+    const PROGRESS_FLUSH_INTERVAL_MS = 100;
+    const LOG_FLUSH_INTERVAL_MS = 100;
+    const pressureTypes = [1, 3, 5];
+    const positionNames = { cun: '寸', guan: '关', chi: '尺' };
+    const pressureNames = { 1: '浮', 3: '中', 5: '沉' };
+    const pressureLevelNames = ['力度过小', '浮', '中', '沉', '力度过大'];
+    const deviceStatusNames = { 1: '待机', 2: '寻脉', 3: '采脉' };
+    const completedStore = {
+      cun: { 1: null, 3: null, 5: null },
+      guan: { 1: null, 3: null, 5: null },
+      chi: { 1: null, 3: null, 5: null },
+    };
+    const chartData = {
+      x: new Array(MAX_POINTS).fill(''),
+      realtime: new Array(MAX_POINTS).fill(null),
+    };
+
+    let chart = null;
+    let activePressureType = null;
+    let chartFlushTimer = null;
+    let progressFlushTimer = null;
+    let logFlushTimer = null;
+    let latestProgress = null;
+    const pendingChartPoints = [];
+    const logLines = [];
+    const pendingLogLines = [];
+
+    const els = {
+      connectionState: document.getElementById('connectionState'),
+      connectionHint: document.getElementById('connectionHint'),
+      namePrefix: document.getElementById('namePrefix'),
+      connectBtn: document.getElementById('connectBtn'),
+      disconnectBtn: document.getElementById('disconnectBtn'),
+      position: document.getElementById('position'),
+      progress: document.getElementById('progress'),
+      collectTip: document.getElementById('collectTip'),
+      deviceName: document.getElementById('deviceName'),
+      deviceId: document.getElementById('deviceId'),
+      protocolReady: document.getElementById('protocolReady'),
+      pressureLevel: document.getElementById('pressureLevel'),
+      deviceStatus: document.getElementById('deviceStatus'),
+      chartCaption: document.getElementById('chartCaption'),
+      pressureStates: Array.from(document.querySelectorAll('.pressure-state')),
+      protocolActions: Array.from(document.querySelectorAll('[data-requires="protocol"]')),
+      analysisResult: document.getElementById('analysisResult'),
+      log: document.getElementById('log'),
+    };
+
+    function currentPosition() {
+      return els.position.value;
+    }
+
+    function writeLog(message) {
+      const time = new Date().toLocaleTimeString();
+      pendingLogLines.push(`[${time}] ${message}`);
+      scheduleLogFlush();
+    }
+
+    function scheduleLogFlush() {
+      if (logFlushTimer !== null) return;
+      logFlushTimer = window.setTimeout(flushLogs, LOG_FLUSH_INTERVAL_MS);
+    }
+
+    function flushLogs() {
+      if (logFlushTimer !== null) {
+        window.clearTimeout(logFlushTimer);
+        logFlushTimer = null;
+      }
+      if (!pendingLogLines.length) return;
+      logLines.push(...pendingLogLines.splice(0));
+      if (logLines.length > MAX_LOG_LINES) {
+        logLines.splice(0, logLines.length - MAX_LOG_LINES);
+      }
+      els.log.textContent = `${logLines.join('\n')}\n`;
+      els.log.scrollTop = els.log.scrollHeight;
+    }
+
+    function traceEvent(eventName, payload) {
+      console.log(`[pulse-collection-pen event] ${eventName}`, payload);
+    }
+
+    function setCollectTip(message, tone = 'warning') {
+      els.collectTip.textContent = message;
+      els.collectTip.className = `hint ${tone}`;
+    }
+
+    function renderConnection(snapshot) {
+      const busy = snapshot.status === 'requesting' || snapshot.status === 'connecting' || snapshot.status === 'reconnecting';
+      els.connectionState.textContent = snapshot.isConnected ? '已连接' : busy ? '连接中' : '未连接';
+      els.connectionState.classList.toggle('connected', snapshot.isConnected);
+      els.connectBtn.disabled = busy || snapshot.isConnected;
+      els.disconnectBtn.disabled = !snapshot.isConnected || busy;
+      els.namePrefix.disabled = busy || snapshot.isConnected;
+      els.protocolActions.forEach((button) => {
+        button.disabled = !snapshot.canExecute || busy;
+      });
+      els.connectionHint.textContent = snapshot.canExecute
+        ? '设备与协议通道已就绪，可以执行命令和开始采集。'
+        : snapshot.isConnected
+          ? '设备已连接，正在准备协议通道。'
+          : '连接成功后才可执行设备命令和开始采集。';
+      els.connectionHint.className = `hint ${snapshot.canExecute ? 'success' : ''}`;
+    }
+
+    function renderSnapshot() {
+      const snapshot = client.getSnapshot();
+      renderConnection(snapshot);
+      els.deviceName.textContent = snapshot.device?.name || '-';
+      els.protocolReady.textContent = snapshot.isProtocolReady ? '已就绪' : '未就绪';
+      els.pressureLevel.textContent = snapshot.pressureLevel === null ? '-' : pressureLevelNames[snapshot.pressureLevel];
+      els.deviceStatus.textContent = snapshot.deviceStatus === null ? '-' : deviceStatusNames[snapshot.deviceStatus];
+      if (snapshot.collection) els.progress.value = snapshot.collection.percent;
+      renderPressureStates();
+    }
+
+    function renderPressureStates() {
+      const group = completedStore[currentPosition()];
+      els.pressureStates.forEach((item) => {
+        const type = Number(item.dataset.pressure);
+        const completed = group[type];
+        item.classList.toggle('done', Boolean(completed));
+        item.classList.toggle('active', activePressureType === type && !completed);
+        item.querySelector('span').textContent = completed ? '已完成' : '未采集';
+      });
+    }
+
+    function nextPressureMessage(position) {
+      const next = pressureTypes.find((type) => !completedStore[position][type]);
+      return next ? `下一项：${pressureNames[next]}` : `${positionNames[position]}的浮中沉已全部完成`;
+    }
+
+    function renderAnalysis(report) {
+      const values = report
+        ? [
+          `${report.position.label} (${report.position.value})`,
+          `${report.rate.label} (${report.rate.value})`,
+          `${report.strength.label} (${report.strength.value})`,
+          `${report.tension.label} (${report.tension.value})`,
+          `${report.smoothness.label} (${report.smoothness.value})`,
+          String(report.kValue),
+        ]
+        : ['-', '-', '-', '-', '-', '-'];
+      const targets = els.analysisResult.querySelectorAll('span');
+      targets.forEach((target, index) => {
+        target.textContent = values[index] || '-';
+      });
+    }
+
+    function analyzePosition(position) {
+      const group = completedStore[position];
+      if (!group[1] || !group[3] || !group[5]) {
+        renderAnalysis(null);
+        return;
+      }
+      try {
+        const report = client.analyzePulseData({
+          float: group[1].records,
+          middle: group[3].records,
+          deep: group[5].records,
+        });
+        console.log('脉象分析结果:', report);
+        renderAnalysis(report);
+        writeLog(`${positionNames[position]}脉象分析完成`);
+      } catch (error) {
+        renderAnalysis(null);
+        writeLog(`脉象分析失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    function initChart() {
+      if (!window.echarts) {
+        writeLog('ECharts 加载失败');
+        return;
+      }
+      chart = echarts.init(document.getElementById('chart-container'));
+      chart.setOption({
+        color: ['#3977d5'],
+        animation: false,
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['实时脉搏'], right: 8 },
+        grid: { left: 52, right: 18, top: 46, bottom: 28 },
+        xAxis: { type: 'category', boundaryGap: false, data: chartData.x, show: false, },
+        yAxis: { type: 'value', scale: true, max: 80, min: 0 },
+        series: [{
+          name: '实时脉搏',
+          type: 'line',
+          data: chartData.realtime,
+          showSymbol: false,
+          smooth: true,
+          connectNulls: true,
+        }],
+      });
+    }
+
+    function queueChartPoint(data) {
+      const computedFn = (num) => (num - 1400) / 10;
+      pendingChartPoints.push({
+        label: new Date().toLocaleTimeString(),
+        value: computedFn(data.pulseValue) + 20,
+      });
+      if (chartFlushTimer === null) {
+        chartFlushTimer = window.setTimeout(flushChartPoints, CHART_FLUSH_INTERVAL_MS);
+      }
+    }
+
+    function flushChartPoints() {
+      if (chartFlushTimer !== null) {
+        window.clearTimeout(chartFlushTimer);
+        chartFlushTimer = null;
+      }
+      if (!pendingChartPoints.length) return;
+
+      const points = pendingChartPoints.splice(0);
+      for (const point of points) {
+        chartData.x.push(point.label);
+        chartData.realtime.push(point.value);
+      }
+      if (chartData.x.length > MAX_POINTS) {
+        chartData.x.splice(0, chartData.x.length - MAX_POINTS);
+        chartData.realtime.splice(0, chartData.realtime.length - MAX_POINTS);
+      }
+      chart?.setOption({
+        xAxis: { data: [...chartData.x] },
+        series: [{ data: [...chartData.realtime] }],
+      }, false);
+    }
+
+    function resetChart() {
+      pendingChartPoints.length = 0;
+      if (chartFlushTimer !== null) {
+        window.clearTimeout(chartFlushTimer);
+        chartFlushTimer = null;
+      }
+      chartData.x.fill('');
+      chartData.realtime.fill(null);
+      chart?.setOption({
+        xAxis: { data: [...chartData.x] },
+        series: [{ data: [...chartData.realtime] }],
+      }, false);
+    }
+
+    function queueProgress(event) {
+      latestProgress = event;
+      if (progressFlushTimer === null) {
+        progressFlushTimer = window.setTimeout(flushProgress, PROGRESS_FLUSH_INTERVAL_MS);
+      }
+    }
+
+    function flushProgress() {
+      if (progressFlushTimer !== null) {
+        window.clearTimeout(progressFlushTimer);
+        progressFlushTimer = null;
+      }
+      const event = latestProgress;
+      latestProgress = null;
+      if (!event) return;
+      activePressureType = event.pressureType;
+      els.progress.value = event.percent;
+      setCollectTip(`正在采集${pressureNames[event.pressureType]}：${Math.round(event.percent)}%，请保持稳定。`);
+      renderPressureStates();
+    }
+
+    function cancelPendingUiUpdates() {
+      pendingChartPoints.length = 0;
+      latestProgress = null;
+      pendingLogLines.length = 0;
+      if (chartFlushTimer !== null) window.clearTimeout(chartFlushTimer);
+      if (progressFlushTimer !== null) window.clearTimeout(progressFlushTimer);
+      if (logFlushTimer !== null) window.clearTimeout(logFlushTimer);
+      chartFlushTimer = null;
+      progressFlushTimer = null;
+      logFlushTimer = null;
+    }
+
+    function resetPageData() {
+      cancelPendingUiUpdates();
+      pressureTypes.forEach((type) => {
+        completedStore.cun[type] = null;
+        completedStore.guan[type] = null;
+        completedStore.chi[type] = null;
+      });
+      activePressureType = null;
+      els.progress.value = 0;
+      els.deviceId.textContent = '-';
+      els.pressureLevel.textContent = '-';
+      els.deviceStatus.textContent = '-';
+      resetChart();
+      renderAnalysis(null);
+      renderPressureStates();
+    }
+
+    async function runCommand(command, successMessage) {
+      const result = await command();
+      if (result.code === 0 && successMessage) writeLog(successMessage);
+      renderSnapshot();
+    }
+
+    client
+      .onStatusChange((event) => {
+        traceEvent('status-change', event);
+        writeLog(`${event.status}: ${event.message}`);
+        renderSnapshot();
+      })
+      .onDeviceSelected((event) => {
+        traceEvent('device-selected', event);
+      })
+      .onConnected((event) => {
+        traceEvent('connected', event);
+        client.clearCollection();
+        client.setPulsePosition(currentPosition());
+        activePressureType = null;
+        els.progress.value = 0;
+        resetChart();
+        setCollectTip(`设备已就绪，${nextPressureMessage(currentPosition())}。`, 'success');
+        renderSnapshot();
+      })
+      .onDisconnected((event) => {
+        traceEvent('disconnected', event);
+        resetPageData();
+        setCollectTip('设备连接已断开，页面采集数据已清空，请重新连接。');
+        writeLog(`设备已断开：${event?.name || '未知设备'}`);
+        renderSnapshot();
+      })
+      .onReconnectFailed((event) => {
+        traceEvent('reconnect-failed', event);
+        resetPageData();
+        renderSnapshot();
+        els.connectionState.textContent = '重连失败';
+        els.connectionState.classList.remove('connected');
+        setCollectTip(`设备自动重连失败：${event.message}`);
+        writeLog(`自动重连失败 [${event.code}]：${event.message}`);
+      })
+      .onRealtimeData((data) => {
+        // traceEvent('realtime-data', data);
+        queueChartPoint(data);
+      })
+      .onPressureLevel((level) => {
+        traceEvent('pressure-level', level);
+        els.pressureLevel.textContent = pressureLevelNames[level];
+      })
+      .onDeviceStatus((status) => {
+        traceEvent('device-status', status);
+        els.deviceStatus.textContent = deviceStatusNames[status];
+      })
+      .onCollectionProgress((event) => {
+        // traceEvent('collection-progress', event);
+        queueProgress(event);
+      })
+      .onPressureCompleted((event) => {
+        traceEvent('pressure-completed', event);
+        flushProgress();
+        flushChartPoints();
+        const position = event.position || currentPosition();
+        completedStore[position][event.pressureType] = event;
+        activePressureType = null;
+        els.progress.value = 100;
+        renderPressureStates();
+        analyzePosition(position);
+        setCollectTip(`${positionNames[position]}${pressureNames[event.pressureType]}采集完成。${nextPressureMessage(position)}`, 'success');
+        writeLog(`${positionNames[position]}${pressureNames[event.pressureType]}采集完成`);
+      })
+      .onCollectionCompleted((event) => {
+        traceEvent('collection-completed', event);
+        renderAnalysis(event.analysis);
+        writeLog(`${positionNames[currentPosition()]}浮中沉采集与脉象分析完成`);
+      })
+      .onCollectionInvalid((event) => {
+        traceEvent('collection-invalid', event);
+        activePressureType = null;
+        els.progress.value = 0;
+        renderPressureStates();
+        setCollectTip(`采集无效，请重新稳定按压。原因：${event.reason}`);
+        writeLog(`采集无效：${event.reason}`);
+      })
+      .onDeviceId((event) => {
+        traceEvent('device-id', event);
+        els.deviceId.textContent = event;
+        writeLog(`设备 ID：${event}`);
+      })
+      .onError((error) => {
+        traceEvent('error-message', error);
+        writeLog(`错误 [${error.code}]：${error.message}`);
+        renderSnapshot();
+      })
+      .onLog((message) => {
+        // traceEvent('log', message);
+        writeLog(message);
+      });
+
+    els.connectBtn.addEventListener('click', async () => {
+      try {
+        const namePrefix = els.namePrefix.value.trim() || 'MZY';
+        const authorizedDevices = await client.getAuthorizedDevices();
+        const matchedDevices = authorizedDevices.filter((device) => (device.name || '').startsWith(namePrefix));
+        const device = matchedDevices.find((item) => item.gatt?.connected)
+          || matchedDevices[0]
+          || await client.requestDevice({ namePrefix });
+        await client.connectAuthorizedDevice(device);
+      } catch (error) {
+        writeLog(error instanceof Error ? error.message : String(error));
+      }
+      renderSnapshot();
+    });
+
+    els.disconnectBtn.addEventListener('click', () => runCommand(() => client.disconnect()));
+    els.position.addEventListener('change', () => {
+      client.clearCollection();
+      client.setPulsePosition(currentPosition());
+      activePressureType = null;
+      els.progress.value = 0;
+      resetChart();
+      els.chartCaption.textContent = `当前部位：${positionNames[currentPosition()]}`;
+      renderPressureStates();
+      analyzePosition(currentPosition());
+      setCollectTip(client.canExecute ? nextPressureMessage(currentPosition()) : '请先连接设备。');
+    });
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      client.clearCollection();
+      cancelPendingUiUpdates();
+      completedStore[currentPosition()] = { 1: null, 3: null, 5: null };
+      activePressureType = null;
+      els.progress.value = 0;
+      resetChart();
+      renderAnalysis(null);
+      renderPressureStates();
+      setCollectTip(`已清空${positionNames[currentPosition()]}的采集数据。`);
+    });
+    document.getElementById('standbyBtn').addEventListener('click', () => runCommand(() => client.enterStandby(), '已发送待机命令'));
+    document.getElementById('searchBtn').addEventListener('click', () => runCommand(() => client.enterSearch(), '已发送寻脉命令'));
+    document.getElementById('collectBtn').addEventListener('click', () => runCommand(() => client.enterCollect(), '已发送采脉命令'));
+    document.getElementById('toggleBtn').addEventListener('click', () => runCommand(() => client.toggleDeviceMode(), '已发送模式切换命令'));
+    document.getElementById('queryStatusBtn').addEventListener('click', () => runCommand(() => client.queryDeviceStatus()));
+    document.getElementById('readIdBtn').addEventListener('click', () => runCommand(() => client.readDeviceId()));
+    document.getElementById('clearLogBtn').addEventListener('click', () => {
+      pendingLogLines.length = 0;
+      logLines.length = 0;
+      if (logFlushTimer !== null) {
+        window.clearTimeout(logFlushTimer);
+        logFlushTimer = null;
+      }
+      els.log.textContent = '';
+    });
+
+    window.addEventListener('resize', () => chart?.resize());
+    client.setPulsePosition('cun');
+    initChart();
+    renderSnapshot();
+  </script>
+</body>
+
+</html>

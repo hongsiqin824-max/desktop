@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PulseReproduceClient 开发文档</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <strong>PulseReproduceClient 开发文档</strong>
+      </div>
+      <nav class="nav">
+        <a class="active" href="./index.html">首页</a>
+        <a href="./getting-started.html">接入</a>
+        <a href="./api-reference.html">API</a>
+        <a href="./events.html">事件</a>
+        <a href="./faq.html">FAQ</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow">Browser SDK / Web Serial API</span>
+          <h1>让开发人员快速接入脉象复现 SDK</h1>
+          <p class="lead">
+            PulseReproduceClient 用于连接脉复仪设备，将脉象数据发送到设备进行复现，并接收设备实时返回的寸、关、尺数据。
+          </p>
+          <div class="hero-actions">
+            <a class="btn primary" href="./getting-started.html">开始接入</a>
+            <a class="btn" href="./api-reference.html">查看 API</a>
+            <a class="btn" href="./events.html">查看事件</a>
+          </div>
+        </div>
+        <div class="hero-aside">
+          <div class="stat-card">
+            <strong>3 步复现</strong>
+            <span>选择串口、打开设备、发送脉象数据。</span>
+          </div>
+          <div class="stat-card">
+            <strong>3 个关键约束</strong>
+            <span>浏览器需支持 Web Serial API，页面需运行在 HTTPS 或 localhost，串口授权必须由用户手动触发。</span>
+          </div>
+          <div class="stat-card">
+            <strong>1 个协作入口</strong>
+            <span>可直接使用脉诊仪采集结果中的 motorData 作为复现数据源。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>你只需要先知道这几件事</h2>
+
+      <div class="cards">
+        <a class="card-link panel" href="./getting-started.html">
+          <span class="tag">01 接入</span>
+          <h3>快速开始</h3>
+          <p>从初始化到发送数据的最短路径，适合第一次接入 SDK 的开发者。</p>
+        </a>
+        <a class="card-link panel" href="./api-reference.html">
+          <span class="tag">02 API</span>
+          <h3>接口总览</h3>
+          <p>连接、停止复现、发送数据和默认配置等核心方法集中说明。</p>
+        </a>
+        <a class="card-link panel" href="./events.html">
+          <span class="tag">03 事件</span>
+          <h3>回调与数据结构</h3>
+          <p>实时数据、发送进度、完成事件、日志和错误事件的字段定义集中展示。</p>
+        </a>
+        <a class="card-link panel" href="./faq.html">
+          <span class="tag">04 FAQ</span>
+          <h3>常见问题</h3>
+          <p>浏览器不支持、无法授权、数据格式错误和左手不支持等典型问题的处理方式。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>最小使用流程</h2>
+      <div class="detail-card">
+        <ol>
+          <li>通过 <code>PulseReproduceClient.create()</code> 创建客户端。</li>
+          <li>先注册事件，再请求串口权限。</li>
+          <li>调用 <code>requestPort()</code> 选择设备，调用 <code>open()</code> 打开串口。</li>
+          <li>调用 <code>sendData(dataList, coefficient, side)</code> 发送脉象数据并开始复现。</li>
+        </ol>
+        <div class="callout">如果你只想快速验证设备是否可用，先直接看 <a href="./getting-started.html"><strong>接入页</strong></a>。</div>
+      </div>
+    </section>
+  </div>
+</body>
+
+</html>

@@ -622,6 +622,23 @@
   to { transform: rotate(360deg); }
 }
 
+/* 摄像头模式："从文件选择"备用按钮 */
+.camera-file-btn {
+  margin-top: 16px;
+  padding: 12px 32px;
+  border-radius: 24px;
+  font-size: 26px;
+  background: rgba(100, 100, 120, 0.1);
+  color: #9ca3af;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.camera-file-btn:hover {
+  background: rgba(100, 100, 120, 0.2);
+}
+
 /* ── 舌脉分析结果卡片样式 ───────────────────────────── */
 .chat-bubble-analysis {
   max-width: 780px !important;

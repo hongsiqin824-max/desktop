@@ -19,7 +19,7 @@ import { ref, computed } from 'vue'
 import { useConsultationStore } from '@/stores/consultation'
 import { useUserStore } from '@/stores/global/user'
 import { analyzeTongue } from '@/api/tongueAI'
-import { readPulseData } from '@/api/pulseAPI'
+import { readPulseData, type PulseReadProgress } from '@/api/pulseAPI'
 import { fetchTonguePulseQuestions, saveTonguePulseAnswers } from '@/api/tonguePulse'
 import {
   matchTongueQuestions,
@@ -59,6 +59,9 @@ export function useTonguePulseCapture() {
   // ── 状态 ──────────────────────────────────────────────────────
   const phase = ref<CapturePhase>('idle')
   const errorMessage = ref('')
+
+  // 摄像头预览是否显示（采集浮层内切换摄像头 / 加载状态）
+  const showCamera = ref(false)
 
   // 舌面照片（File 对象，由硬件或用户选择提供）
   const tongueTopFile = ref<File | null>(null)
@@ -172,12 +175,51 @@ export function useTonguePulseCapture() {
     return mimeMap[ext || ''] || 'image/jpeg'
   }
 
-  // ── 拍照接口（开发阶段 = mock，硬件到位后替换） ──────────────
+  // ── 拍照接口（摄像头优先，文件选择备用） ──────────────────────
 
-  /** 舌面拍照 */
+  // 等待用户通过摄像头拍照或文件选择来提供图片
+  let cameraFileResolve: ((file: File) => void) | null = null
+
+  /** 用户通过摄像头拍照完成（由 ConsultationView 调用） */
+  function onCameraCaptured(file: File): void {
+    showCamera.value = false
+    if (cameraFileResolve) {
+      cameraFileResolve(file)
+      cameraFileResolve = null
+    }
+  }
+
+  /** 用户关闭摄像头（未拍照，继续等待文件选择） */
+  function onCameraCancel(): void {
+    showCamera.value = false
+  }
+
+  /** 用户点击"从文件选择"（关闭摄像头，弹出文件选择器） */
+  async function selectFromFile(): Promise<void> {
+    showCamera.value = false
+    const file = await mockCaptureImage()
+    if (cameraFileResolve) {
+      cameraFileResolve(file)
+      cameraFileResolve = null
+    }
+  }
+
+  /**
+   * 舌面拍照：显示摄像头预览，用户可拍照或选择文件
+   *
+   * 流程：
+   *   showCamera = true → 采集浮层显示 CameraCapture 组件
+   *   → 用户拍照 → onCameraCaptured(file) → resolve
+   *   → 用户点"从文件选择" → selectFromFile() → resolve
+   */
   async function captureTongueTopImage(): Promise<File> {
     phase.value = 'tongue_top'
-    const file = await mockCaptureImage()
+    showCamera.value = true
+
+    const file = await new Promise<File>((resolve) => {
+      cameraFileResolve = resolve
+    })
+
     tongueTopFile.value = file
     if (import.meta.env.DEV) {
       console.log('[采集] 舌面照片:', file.name, `(${(file.size / 1024).toFixed(0)}KB)`)
@@ -216,7 +258,7 @@ export function useTonguePulseCapture() {
    * 步骤2: AI 分析舌象 + 脉诊采集 + 获取问题 + 自动匹配
    * 这是一个自动推进的步骤，不需要用户操作
    */
-  async function stepAnalyzeAndMatch(): Promise<void> {
+  async function stepAnalyzeAndMatch(onPulseProgress?: (progress: PulseReadProgress) => void): Promise<void> {
     try {
       // 3a. AI 舌象分析（用舌面照片）
       phase.value = 'ai_analyzing'
@@ -236,7 +278,7 @@ export function useTonguePulseCapture() {
 
       // 3b. 脉诊采集
       phase.value = 'pulse_reading'
-      const pulse = await readPulseData()
+      const pulse = await readPulseData(onPulseProgress)
       pulseData.value = pulse
       store.setPulseAnalysis(pulse)
 
@@ -380,17 +422,20 @@ export function useTonguePulseCapture() {
   function resetCapture(): void {
     phase.value = 'idle'
     errorMessage.value = ''
+    showCamera.value = false
     tongueTopFile.value = null
     matchedTongue.value = []
     matchedPulse.value = []
     resultTextLines.value = []
     pulseData.value = null
+    cameraFileResolve = null
   }
 
   return {
     // 状态
     phase,
     errorMessage,
+    showCamera,
     isProcessing,
     isWaitingForUser,
     matchedTongue,
@@ -403,5 +448,9 @@ export function useTonguePulseCapture() {
     stepAnalyzeAndMatch,
     stepSave,
     resetCapture,
+    // 摄像头交互（由 ConsultationView 调用）
+    onCameraCaptured,
+    onCameraCancel,
+    selectFromFile,
   }
 }

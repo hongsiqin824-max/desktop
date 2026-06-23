@@ -92,28 +92,53 @@ export default defineConfig(({ mode }) => {
         '/mp': {
           target: 'http://39.106.163.181:8092',
           changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin')
+            })
+          },
         },
         // ── 答案保存接口代理 ──
         '/answersheet': {
           target: 'http://39.106.163.181:8092',
           changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin')
+            })
+          },
         },
         // ── 后端认证接口代理（验证码 + 登录）──
         '/verifyCode': {
           target: 'http://39.106.163.181:8092',
           changeOrigin: true,
           cookieDomainRewrite: '',
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin')
+            })
+          },
         },
         '/doLogin': {
           target: 'http://39.106.163.181:8092',
           changeOrigin: true,
           cookieDomainRewrite: '',
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin')
+            })
+          },
         },
         // ── 后端问卷模型接口代理──
         '/questionModel': {
           target: 'http://39.106.163.181:8092',
           changeOrigin: true,
           cookieDomainRewrite: '',
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin')
+            })
+          },
         },
         // ── 第三方舌象 AI 分析服务（脉至语）──
         '/tongue-ai': {

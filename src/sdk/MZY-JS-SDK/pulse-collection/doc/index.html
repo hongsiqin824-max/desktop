@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PulseCollectionClient 开发文档</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <strong>PulseCollectionClient 开发文档</strong>
+      </div>
+      <nav class="nav">
+        <a class="active" href="./index.html">首页</a>
+        <a href="./getting-started.html">接入</a>
+        <a href="./api-reference.html">API</a>
+        <a href="./events.html">事件</a>
+        <a href="./faq.html">FAQ</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <span class="eyebrow">Browser SDK / Web Serial API</span>
+          <h1>让开发人员快速接入脉象采集 SDK</h1>
+          <p class="lead">
+            由脉之语技术团队提供,开发过程中如有疑问请联系技术团队协助；<br>
+          </p>
+          <div class="hero-actions">
+            <a class="btn primary" href="./getting-started.html">开始接入</a>
+            <a class="btn" href="./api-reference.html">查看 API</a>
+            <a class="btn" href="./events.html">查看事件</a>
+          </div>
+        </div>
+        <div class="hero-aside">
+          <div class="stat-card">
+            <strong>4 步上手</strong>
+            <span>选择串口、打开设备、注册事件、开始采集。</span>
+          </div>
+          <div class="stat-card">
+            <strong>3 个关键约束</strong>
+            <span>浏览器需支持 Web Serial API，页面需运行在 HTTPS 或 localhost，串口授权必须由用户手动触发。</span>
+          </div>
+          <div class="stat-card">
+            <strong>1 个建议</strong>
+            <span>先看接入页，再按需进入 API 和事件页，最后补充 FAQ 排障。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>你只需要先知道这几件事</h2>
+
+      <div class="cards">
+        <a class="card-link panel" href="./getting-started.html">
+          <span class="tag">01 接入</span>
+          <h3>快速开始</h3>
+          <p>从初始化到开始采集的最短路径，适合第一次接入 SDK 的开发者。</p>
+        </a>
+        <a class="card-link panel" href="./api-reference.html">
+          <span class="tag">02 API</span>
+          <h3>接口总览</h3>
+          <p>连接、采集、控制、设备信息等核心方法集中说明，方便查找。</p>
+        </a>
+        <a class="card-link panel" href="./events.html">
+          <span class="tag">03 事件</span>
+          <h3>回调与数据结构</h3>
+          <p>实时数据、状态变化、采集完成和错误事件的字段定义集中展示。</p>
+        </a>
+        <a class="card-link panel" href="./faq.html">
+          <span class="tag">04 FAQ</span>
+          <h3>常见问题</h3>
+          <p>浏览器不支持、无法授权、自动寻脉失败等典型问题的处理方式。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>最小使用流程</h2>
+      <div class="detail-card">
+        <ol>
+          <li>创建 `PulseCollectionClient` 实例。</li>
+          <li>先注册事件，再请求串口权限。</li>
+          <li>调用 `requestPort()` 选择设备，调用 `open()` 打开串口。</li>
+          <li>调用 `start(mode, side)` 开始采集，完成后在 `onCollectionCompleted` 中保存结果。</li>
+        </ol>
+        <div class="callout">如果你只想快速验证设备是否可用，先直接看 <a href="./getting-started.html"><strong>接入页</strong></a>。</div>
+      </div>
+    </section>
+  </div>
+</body>
+
+</html>

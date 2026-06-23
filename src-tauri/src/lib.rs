@@ -1,4 +1,5 @@
 mod proxy;
+mod ble;
 
 use tauri::Manager;
 
@@ -18,6 +19,14 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            ble::ble_scan,
+            ble::ble_connect,
+            ble::ble_discover,
+            ble::ble_write,
+            ble::ble_subscribe,
+            ble::ble_disconnect,
+        ])
         .setup(|app| {
             // 启动本地代理服务器（LLM/ASR/TTS）
             let api_key = API_KEY.to_string();
