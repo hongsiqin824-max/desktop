@@ -19,8 +19,10 @@ const emit = defineEmits<{
 const videoRef = ref<HTMLVideoElement | null>(null)
 const errorMsg = ref('')
 const isCapturing = ref(false)  // 拍照按钮禁用状态
+const videoReady = ref(false)   // 视频流已就绪，可以拍照
 
 let stream: MediaStream | null = null
+let unmounted = false  // 防止组件销毁后 getUserMedia 才返回
 
 // ── 打开摄像头 ──────────────────────────────────────────────
 
@@ -29,10 +31,37 @@ async function initCamera(): Promise<void> {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 960 } },
     })
+    // 如果组件已卸载（用户在权限弹窗期间取消），立刻关闭流
+    if (unmounted) {
+      stream.getTracks().forEach((t) => t.stop())
+      stream = null
+      return
+    }
     if (videoRef.value) {
-      videoRef.value.srcObject = stream
+      const video = videoRef.value
+      video.srcObject = stream
+
+      // 多种方式检测视频流就绪（不同浏览器/WebView 触发的事件不同）
+      let readyHandled = false
+      const markReady = () => {
+        if (!readyHandled) {
+          readyHandled = true
+          videoReady.value = true
+        }
+      }
+      video.addEventListener('loadedmetadata', markReady)
+      video.addEventListener('playing', markReady)
+      video.addEventListener('canplay', markReady)
+
+      // 兜底：2 秒后如果事件都没触发，直接检查尺寸
+      setTimeout(() => {
+        if (!readyHandled && video.videoWidth > 0) {
+          markReady()
+        }
+      }, 2000)
     }
   } catch (e) {
+    if (unmounted) return
     const msg = e instanceof Error ? e.message : String(e)
     errorMsg.value = '无法打开摄像头，请检查设备连接后重试'
     emit('error', msg)
@@ -42,7 +71,7 @@ async function initCamera(): Promise<void> {
 // ── 拍照：截取当前帧 → 转 File ───────────────────────────────
 
 function capturePhoto(): void {
-  if (!videoRef.value || !stream) return
+  if (!videoRef.value || !stream || !videoReady.value) return
 
   isCapturing.value = true
 
@@ -93,6 +122,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  unmounted = true
   stopStream()
 })
 
@@ -126,7 +156,7 @@ watch(videoRef, (el) => {
     <div class="camera-actions">
       <button
         class="camera-btn camera-btn--capture"
-        :disabled="!stream || isCapturing"
+        :disabled="!stream || !videoReady || isCapturing"
         @click="capturePhoto"
       >
         📸 拍照

@@ -179,6 +179,7 @@ export function useTonguePulseCapture() {
 
   // 等待用户通过摄像头拍照或文件选择来提供图片
   let cameraFileResolve: ((file: File) => void) | null = null
+  let cameraFileReject: ((reason: Error) => void) | null = null
 
   /** 用户通过摄像头拍照完成（由 ConsultationView 调用） */
   function onCameraCaptured(file: File): void {
@@ -186,21 +187,57 @@ export function useTonguePulseCapture() {
     if (cameraFileResolve) {
       cameraFileResolve(file)
       cameraFileResolve = null
+      cameraFileReject = null
     }
   }
 
-  /** 用户关闭摄像头（未拍照，继续等待文件选择） */
+  /** 用户关闭摄像头（取消拍照，reject Promise → 流程抛错） */
   function onCameraCancel(): void {
     showCamera.value = false
+    if (cameraFileReject) {
+      cameraFileReject(new Error('用户取消了拍照'))
+      cameraFileResolve = null
+      cameraFileReject = null
+    }
   }
 
   /** 用户点击"从文件选择"（关闭摄像头，弹出文件选择器） */
   async function selectFromFile(): Promise<void> {
     showCamera.value = false
-    const file = await mockCaptureImage()
-    if (cameraFileResolve) {
-      cameraFileResolve(file)
-      cameraFileResolve = null
+    try {
+      const file = await mockCaptureImage()
+      if (cameraFileResolve) {
+        cameraFileResolve(file)
+        cameraFileResolve = null
+        cameraFileReject = null
+      }
+    } catch (e) {
+      // 用户取消了文件选择器 → reject Promise
+      if (cameraFileReject) {
+        cameraFileReject(e instanceof Error ? e : new Error('文件选择失败'))
+        cameraFileResolve = null
+        cameraFileReject = null
+      }
+    }
+  }
+
+  /** 摄像头打开失败时调用 → 自动降级到文件选择 */
+  async function onCameraError(): Promise<void> {
+    showCamera.value = false
+    // 摄像头失败不 reject，自动尝试文件选择
+    try {
+      const file = await mockCaptureImage()
+      if (cameraFileResolve) {
+        cameraFileResolve(file)
+        cameraFileResolve = null
+        cameraFileReject = null
+      }
+    } catch (e) {
+      if (cameraFileReject) {
+        cameraFileReject(e instanceof Error ? e : new Error('摄像头和文件选择均失败'))
+        cameraFileResolve = null
+        cameraFileReject = null
+      }
     }
   }
 
@@ -216,8 +253,9 @@ export function useTonguePulseCapture() {
     phase.value = 'tongue_top'
     showCamera.value = true
 
-    const file = await new Promise<File>((resolve) => {
+    const file = await new Promise<File>((resolve, reject) => {
       cameraFileResolve = resolve
+      cameraFileReject = reject
     })
 
     tongueTopFile.value = file
@@ -429,6 +467,7 @@ export function useTonguePulseCapture() {
     resultTextLines.value = []
     pulseData.value = null
     cameraFileResolve = null
+    cameraFileReject = null
   }
 
   return {
@@ -451,6 +490,7 @@ export function useTonguePulseCapture() {
     // 摄像头交互（由 ConsultationView 调用）
     onCameraCaptured,
     onCameraCancel,
+    onCameraError,
     selectFromFile,
   }
 }

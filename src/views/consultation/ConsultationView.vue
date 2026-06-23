@@ -1991,6 +1991,7 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
             <CameraCapture
               @captured="tonguePulseCapture.onCameraCaptured"
               @cancel="tonguePulseCapture.onCameraCancel"
+              @error="tonguePulseCapture.onCameraError"
             />
             <button class="camera-file-btn" @click="tonguePulseCapture.selectFromFile">
               📁 从文件选择
