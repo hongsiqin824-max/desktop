@@ -436,34 +436,17 @@ export function parseUserInfoResult(raw: string): IUserInfoParseResult | null {
   }
 }
 
-// ── 本地手机号提取兜底：从原始语音文本中用正则提取手机号 ──
-export function extractPhoneLocally(text: string): string | null {
-  // 先找"手机号/电话/联系方式"后面的数字串
-  const keywordMatch = text.match(/(?:手机号|电话|联系方式|号码)[：:是]?\s*([\d零〇○一壹１二贰两２三叁３四肆４五伍５六陆６七柒７八捌８九玖９\s-]+?)(?:[，,。.！!？?\s]|$)/)
-  if (keywordMatch) {
-    const digits = convertChineseDigitsToArabic(keywordMatch[1]!.replace(/[\s-]/g, ''))
-    if (/^\d{11}$/.test(digits)) return digits
-  }
-
-  // 全文搜索连续11位数字
-  const arabicMatch = text.match(/1\d{10}/)
-  if (arabicMatch) return arabicMatch[0]!
-
-  // 全文搜索中文数字序列（连续11个中文数字）
-  const chinesePattern = /([零〇○一壹１二贰两２三叁３四肆４五伍５六陆６七柒７八捌８九玖９]{11,})/
-  const cnMatch = text.match(chinesePattern)
-  if (cnMatch) {
-    const digits = convertChineseDigitsToArabic(cnMatch[1]!)
-    // 取前11位
-    if (digits.length >= 11 && /^1\d{10}/.test(digits.slice(0, 11))) {
-      return digits.slice(0, 11)
-    }
-  }
-
-  return null
-}
-
 // ── 辨证解读 + 处方解读：LLM 生成详细解读文本 ──────────────────
+
+/** 方剂详情（后端 kytFormulas 原始数据） */
+export interface IKytFormula {
+  kfNameCn?: string
+  kfName?: string
+  kfIngredients?: string
+  kfComposition?: string
+  kfDosage?: string
+  kfUsage?: string
+}
 
 /** 构建解读请求的上下文数据 */
 export interface IInterpretationContext {
@@ -478,7 +461,7 @@ export interface IInterpretationContext {
   /** 辨证结论（F-code 映射后） */
   syndromeConclusion: { key: string; val: string }[]
   /** 方剂详情（后端 kytFormulas 原始数据） */
-  kytFormulas: any[]
+  kytFormulas: IKytFormula[]
   /** 推荐方案（后端 tuijianList 原始数据） */
   recommendations: { key: string; value: string }[]
 }
@@ -526,7 +509,7 @@ export function buildInterpretationMessages(
     .join('\n')
 
   const formulasText = context.kytFormulas.length > 0
-    ? context.kytFormulas.map((f: any) => {
+    ? context.kytFormulas.map((f) => {
         const name = f.kfNameCn || f.kfName || '未知方剂'
         const code = f.kfName || ''
         const ingredients = f.kfIngredients || f.kfComposition || ''

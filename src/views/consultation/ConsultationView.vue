@@ -1204,6 +1204,12 @@ async function advanceApiQuestion() {
 async function saveAnswersWithRetry(phase: string): Promise<void> {
   let answers = [...consultationStore.detailSelectedAnswers]
 
+  // 没有追问答案时跳过保存（后端不接受空数组）
+  if (answers.length === 0) {
+    console.log(`[详细问诊] ${phase}无追问答案，跳过保存`)
+    return
+  }
+
   console.log(`[详细问诊] === ${phase}答案开始保存 ===`)
   console.log(`[详细问诊] answerSheetId:`, consultationStore.answerSheetId)
   console.log(`[详细问诊] 共 ${answers.length} 条答案:`, JSON.stringify(answers))
