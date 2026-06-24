@@ -38,4 +38,3 @@ uuid = "1"
 # Windows WebView2 摄像头/麦克风权限
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
-windows = { version = "0.61", features = ["Foundation"] }

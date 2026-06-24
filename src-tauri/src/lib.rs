@@ -35,10 +35,9 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
                         use webview2_com::Microsoft::Web::WebView2::Win32::*;
-                        use webview2_com::PermissionRequestedEventHandler;
                         let webview2 = webview.controller().CoreWebView2().unwrap();
                         unsafe {
-                            let mut token = windows::Foundation::EventRegistrationToken::default();
+                            let mut token: i64 = 0;
                             let _ = webview2.add_PermissionRequested(
                                 &PermissionRequestedEventHandler::create(Box::new(|_, args| {
                                     let Some(args) = args else { return Ok(()) };
