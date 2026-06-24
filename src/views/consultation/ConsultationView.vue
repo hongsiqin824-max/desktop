@@ -609,6 +609,9 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
   const speed = uiStore.playbackSpeed
   if (symptom) currentSymptom.value = symptom
 
+  // detail_transition: API 与 TTS 并行执行（API 提前发起，TTS 播放期间等待结果）
+  let fetchQuestionsPromise: Promise<void> | null = null
+
   // ── 从 severity 步骤离开时，自动记录严重程度 ──
   if (currentStepId.value === 'severity') {
     if (stepId === 'end_severe') consultationStore.setSeverityLevel('severe')
@@ -673,21 +676,24 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
       })
     }
     if (consultationStore.answerSheetId) {
-      try {
-        const result = await fetchRequiredQuestions(
-          consultationStore.answerSheetId,
-          consultationStore.questionModel,
-        )
-        consultationStore.setRequiredQuestions(result.questionList)
-        if (import.meta.env.DEV) {
-          console.log('[详细问诊] 必问问题已更新:', result.questionList.length, '个问题')
+      // 非阻塞：API 与后续 TTS 并行执行
+      fetchQuestionsPromise = (async () => {
+        try {
+          const result = await fetchRequiredQuestions(
+            consultationStore.answerSheetId,
+            consultationStore.questionModel,
+          )
+          consultationStore.setRequiredQuestions(result.questionList)
+          if (import.meta.env.DEV) {
+            console.log('[详细问诊] 必问问题已更新:', result.questionList.length, '个问题')
+          }
+        } catch (e) {
+          if (import.meta.env.DEV) {
+            console.error('[详细问诊] 获取必问问题失败，将使用本地题库降级:', e)
+          }
+          // API 失败不阻断流程，继续使用本地题库
         }
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.error('[详细问诊] 获取必问问题失败，将使用本地题库降级:', e)
-        }
-        // API 失败不阻断流程，继续使用本地题库
-      }
+      })()
     }
   }
   if (stepId === 'detail_question' && detailIsFirstQuestion.value) {
@@ -933,6 +939,11 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     await doctorSay(text)
   }
 
+  // detail_transition: TTS 播放期间 API 并行执行，此处等待结果
+  if (fetchQuestionsPromise) {
+    await fetchQuestionsPromise
+  }
+
   // 代次变化（用户跳过）→ 不启动采集和自动推进
   if (goToStepGeneration.value !== gen) return
 
@@ -950,7 +961,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
         await tonguePulseCapture.stepTongueTop()
         if (goToStepGeneration.value !== gen) return
         captureCompleted.value = true
-        await new Promise(r => setTimeout(r, 500))
+        await new Promise(r => setTimeout(r, 300))
         if (goToStepGeneration.value !== gen) return
         isCapturing.value = false
         goToStep('pulse_intro')  // 跳过舌底拍照，直接进入脉诊
@@ -966,7 +977,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
         pulseMessage.value = ''
         if (goToStepGeneration.value !== gen) return
         captureCompleted.value = true
-        await new Promise(r => setTimeout(r, 500))
+        await new Promise(r => setTimeout(r, 300))
         if (goToStepGeneration.value !== gen) return
         isCapturing.value = false
         goToStep('pulse_done')

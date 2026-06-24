@@ -28,6 +28,35 @@ pub fn run() {
             ble::ble_disconnect,
         ])
         .setup(|app| {
+            // Windows WebView2：授权摄像头/麦克风权限
+            // wry 只自动处理剪贴板权限，摄像头/麦克风需要手动授权
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        use webview2_com::Microsoft::Web::WebView2::Win32::*;
+                        let webview2 = webview.controller().CoreWebView2().unwrap();
+                        unsafe {
+                            let mut token = windows::Win32::Foundation::EventRegistrationToken::default();
+                            let _ = webview2.add_PermissionRequested(
+                                &PermissionRequestedEventHandler::create(Box::new(|_, args| {
+                                    let Some(args) = args else { return Ok(()) };
+                                    let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                                    args.PermissionKind(&mut kind)?;
+                                    if kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA
+                                        || kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+                                    {
+                                        args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                                    }
+                                    Ok(())
+                                })),
+                                &mut token,
+                            );
+                        }
+                    });
+                }
+            }
+
             // 启动本地代理服务器（LLM/ASR/TTS）
             let api_key = API_KEY.to_string();
             tauri::async_runtime::spawn(async move {

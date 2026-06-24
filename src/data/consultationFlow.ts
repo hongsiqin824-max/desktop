@@ -322,7 +322,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   pulse_done: {
     id: 'pulse_done',
     doctorText: '脉象已采集完毕，正在为您分析舌脉信息。',
-    autoAdvance: { nextStep: 'analysis_review', delay: 1500 },
+    autoAdvance: { nextStep: 'analysis_review', delay: 1000 },
   },
 
   // ── 系统分析结果与确认 ───────────────────────────────────
@@ -340,7 +340,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
   analysis_normal: {
     id: 'analysis_normal',
     doctorText: '',
-    autoAdvance: { nextStep: 'detail_transition', delay: 1000 },
+    autoAdvance: { nextStep: 'detail_transition', delay: 200 },
   },
 
 // 明显异常 → 温馨提示
@@ -382,7 +382,7 @@ export const FLOW_STEPS: Record<StepIdType, IFlowStep> = {
     id: 'detail_transition',
     doctorText: '',
     isEnd: false,
-    autoAdvance: { nextStep: 'detail_question', delay: 1200 },
+    autoAdvance: { nextStep: 'detail_question', delay: 800 },
   },
 
   // ── 详细问诊：动态问题步骤 ──────────────────────────────

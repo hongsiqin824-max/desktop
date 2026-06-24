@@ -20,6 +20,7 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 const errorMsg = ref('')
 const isCapturing = ref(false)  // 拍照按钮禁用状态
 const videoReady = ref(false)   // 视频流已就绪，可以拍照
+const streamActive = ref(false) // 摄像头流是否已打开（响应式，供模板使用）
 
 let stream: MediaStream | null = null
 let unmounted = false  // 防止组件销毁后 getUserMedia 才返回
@@ -31,6 +32,7 @@ async function initCamera(): Promise<void> {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 960 } },
     })
+    streamActive.value = true
     // 如果组件已卸载（用户在权限弹窗期间取消），立刻关闭流
     if (unmounted) {
       stream.getTracks().forEach((t) => t.stop())
@@ -107,6 +109,7 @@ function stopStream(): void {
   if (stream) {
     stream.getTracks().forEach((track) => track.stop())
     stream = null
+    streamActive.value = false
   }
 }
 
@@ -156,7 +159,7 @@ watch(videoRef, (el) => {
     <div class="camera-actions">
       <button
         class="camera-btn camera-btn--capture"
-        :disabled="!stream || !videoReady || isCapturing"
+        :disabled="!streamActive || !videoReady || isCapturing"
         @click="capturePhoto"
       >
         📸 拍照

@@ -4373,6 +4373,7 @@ dependencies = [
  "tower-http",
  "tungstenite",
  "uuid",
+ "webview2-com",
 ]
 
 [[package]]
