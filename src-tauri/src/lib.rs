@@ -34,24 +34,23 @@ pub fn run() {
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
-                        use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
-                        let webview2 = webview.controller().CoreWebView2().unwrap();
                         unsafe {
+                            let webview2 = webview.controller().CoreWebView2().unwrap();
                             let mut token: i64 = 0;
-                            let _ = webview2.add_PermissionRequested(
-                                &PermissionRequestedEventHandler::create(Box::new(|_, args| {
+                            let handler = webview2_com::PermissionRequestedEventHandler::create(
+                                Box::new(|_, args| {
                                     let Some(args) = args else { return Ok(()) };
-                                    let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                                    let mut kind = webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND::default();
                                     args.PermissionKind(&mut kind)?;
-                                    if kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA
-                                        || kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+                                    if kind == webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND_CAMERA
+                                        || kind == webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
                                     {
-                                        args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                                        args.SetState(webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
                                     }
                                     Ok(())
-                                })),
-                                &mut token,
+                                }),
                             );
+                            let _ = webview2.add_PermissionRequested(&handler, &mut token);
                         }
                     });
                 }
