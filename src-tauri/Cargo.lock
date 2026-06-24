@@ -4374,6 +4374,7 @@ dependencies = [
  "tungstenite",
  "uuid",
  "webview2-com",
+ "windows",
 ]
 
 [[package]]
