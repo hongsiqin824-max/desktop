@@ -140,6 +140,9 @@ async function readPulseFromDevice(
   if (isTauri) {
     const { installBleAdapter, resetBleAdapter } = await import('@/lib/pulse-pen/bleAdapter')
     resetBleAdapter()  // 重置上次连接的状态
+    // 清理残留的 BLE 连接（上次采集超时/异常退出时可能未断开）
+    // BLE 设备在已连接状态下不广播，不清理的话后续扫描找不到设备
+    try { await (await import('@tauri-apps/api/core')).invoke('ble_disconnect') } catch { /* 无残留连接时正常报错 */ }
     await installBleAdapter()
   }
 
@@ -181,31 +184,36 @@ async function readPulseFromDevice(
     console.log('[脉诊笔] ✅ 已连接:', penClient.getDevice()?.name)
   }
 
-  // 5. 依次采集三个部位
+  // 5. 依次采集三个部位（try/finally 确保无论成功/失败/超时都断开连接）
   const completedEvents: PenCollectionCompletedEvent[] = []
 
-  for (let i = 0; i < COLLECTION_POSITIONS.length; i++) {
-    const { position, phase, label } = COLLECTION_POSITIONS[i]!
-    const percent = Math.round(((i + 1) / COLLECTION_POSITIONS.length) * 100)
-
-    onProgress?.({ phase, message: `正在采集${label}部…`, percent })
-
-    const event = await collectOnePosition(penClient, position)
-    completedEvents.push(event)
-
-    if (import.meta.env.DEV) {
-      console.log(`[脉诊笔] ${label}部采集完成:`, {
-        记录数: event.records.length,
-        分析: event.analysis ? '有' : '无',
-      })
-    }
-  }
-
-  // 6. 断开连接
   try {
-    await penClient.disconnect()
-  } catch {
-    // 断开失败不影响数据
+    for (let i = 0; i < COLLECTION_POSITIONS.length; i++) {
+      const { position, phase, label } = COLLECTION_POSITIONS[i]!
+      const percent = Math.round(((i + 1) / COLLECTION_POSITIONS.length) * 100)
+
+      onProgress?.({ phase, message: `正在采集${label}部…`, percent })
+
+      const event = await collectOnePosition(penClient, position)
+      completedEvents.push(event)
+
+      if (import.meta.env.DEV) {
+        console.log(`[脉诊笔] ${label}部采集完成:`, {
+          记录数: event.records.length,
+          分析: event.analysis ? '有' : '无',
+        })
+      }
+    }
+  } finally {
+    // 6. 无论采集成功、失败、超时，都断开 BLE 连接
+    //    防止设备保持连接状态不广播，导致后续扫描找不到
+    try {
+      await penClient.disconnect()
+    } catch {
+      // 断开失败不影响数据
+    }
+    // 重置 SDK 客户端，下次调用时创建新实例，避免残留内部状态
+    penClient = null
   }
 
   // 7. 合并三个部位的数据，取分析结果最佳的
