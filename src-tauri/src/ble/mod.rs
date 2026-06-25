@@ -59,6 +59,7 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
 
     // ① 如果有残留连接，先断开（BLE 设备在已连接时不广播，必须先断开）
     if let Some(peripheral) = state.peripheral.take() {
+        println!("[ble_scan] 断开残留连接...");
         let _ = peripheral.disconnect().await;
     }
     state.write_char = None;
@@ -66,8 +67,12 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
 
     // ② 复用已有 adapter（保持 peripheral 引用有效），没有才新建
     let adapter = match state.adapter.take() {
-        Some(a) => a,
+        Some(a) => {
+            println!("[ble_scan] 复用已有 adapter");
+            a
+        }
         None => {
+            println!("[ble_scan] 创建新 adapter");
             let manager = Manager::new().await.map_err(|e| format!("创建 BLE 管理器失败: {e}"))?;
             let adapters = manager.adapters().await.map_err(|e| format!("获取适配器失败: {e}"))?;
             adapters.into_iter().next().ok_or("未找到 BLE 适配器，请确认蓝牙已开启")?
@@ -102,6 +107,8 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
         }
     }
 
+    println!("[ble_scan] 扫描完成，找到 {} 个 MZY 设备", devices.len());
+
     // 保存 adapter 引用供后续连接使用
     state.adapter = Some(adapter);
 
@@ -127,11 +134,16 @@ pub async fn ble_connect(device_id: String) -> Result<(), String> {
         .ok_or(format!("未找到设备: {device_id}"))?;
 
     // 建立 GATT 连接
+    println!("[ble_connect] 正在连接设备: {}", device_id);
     target
         .connect()
         .await
-        .map_err(|e| format!("连接设备失败: {e}"))?;
+        .map_err(|e| {
+            println!("[ble_connect] 连接失败: {e}");
+            format!("连接设备失败: {e}")
+        })?;
 
+    println!("[ble_connect] ✅ 连接成功");
     state.peripheral = Some(target);
     Ok(())
 }
@@ -244,7 +256,11 @@ pub async fn ble_disconnect() -> Result<(), String> {
     let mut state = BLE.lock().await;
 
     if let Some(ref peripheral) = state.peripheral {
+        println!("[ble_disconnect] 正在断开连接...");
         let _ = peripheral.disconnect().await;
+        println!("[ble_disconnect] ✅ 已断开");
+    } else {
+        println!("[ble_disconnect] 无活跃连接，跳过");
     }
 
     // 清理所有状态

@@ -142,7 +142,10 @@ async function readPulseFromDevice(
     resetBleAdapter()  // 重置上次连接的状态
     // 清理残留的 BLE 连接（上次采集超时/异常退出时可能未断开）
     // BLE 设备在已连接状态下不广播，不清理的话后续扫描找不到设备
-    try { await (await import('@tauri-apps/api/core')).invoke('ble_disconnect') } catch { /* 无残留连接时正常报错 */ }
+    try {
+      await (await import('@tauri-apps/api/core')).invoke('ble_disconnect')
+      if (import.meta.env.DEV) console.log('[脉诊笔] 扫描前清理残留连接完成')
+    } catch { /* 无残留连接时正常报错 */ }
     await installBleAdapter()
   }
 
