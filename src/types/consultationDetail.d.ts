@@ -62,10 +62,12 @@ export interface IDetailQuestionsResponse {
 }
 
 // ── API 8 保存请求体（批量保存答案） ──────────────────────
-// 注意：questionId = kqihId, selectedOptionIds = koihId 路径
+// 注意：questionId = kqihId, selectedOptionIds = koihId
+// 单选：[子选项 koihId] 或 [选项 koihId]（无子选项时）
+// 多选：[子选项 koihId1, 子选项 koihId2, ...] 或 [选项 koihId1, 选项 koihId2, ...]
 export interface IBatchSaveAnswer {
   questionId: string                    // 问题的 kqihId
-  selectedOptionIds: string[]           // 选择路径 [父选项 koihId, 子选项 koihId]
+  selectedOptionIds: string[]           // 选中的选项 koihId（子选项优先，无子选项时为父选项）
 }
 
 export interface IBatchSaveRequest {

@@ -160,6 +160,27 @@ export function useSpeechRecognition() {
     return btoa(binary)
   }
 
+  /**
+   * 等待旧 WebSocket 真正关闭后再 resolve，防止"Connection reset by peer"
+   * @param oldWs 要等待关闭的 WebSocket（可能已被 release 置空前的引用）
+   * @param timeoutMs 最大等待时间（毫秒）
+   */
+  const waitForWsClose = (oldWs: WebSocket | null, timeoutMs = 500): Promise<void> => {
+    if (!oldWs || oldWs.readyState === WebSocket.CLOSED) return Promise.resolve()
+
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        // 超时兜底：不再等待，强制继续
+        resolve()
+      }, timeoutMs)
+
+      oldWs.addEventListener('close', () => {
+        clearTimeout(timer)
+        resolve()
+      }, { once: true })
+    })
+  }
+
   const release = () => {
     if (sendTimer) { clearInterval(sendTimer); sendTimer = null }
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
@@ -186,6 +207,18 @@ export function useSpeechRecognition() {
     responseDone = false
     transcriptionDone = false
     workletReady = false
+  }
+
+  /**
+   * 异步释放资源：先保存旧 WebSocket 引用 → 清理所有资源 → 等待旧连接真正关闭
+   * 用于 doStart 中确保旧连接在代理端已完全释放后再建新连接
+   */
+  const releaseAsync = async (): Promise<void> => {
+    // 先保存旧 WebSocket 引用（release 会将其置空）
+    const oldWs = ws
+    release()
+    // 等待旧连接在 TCP 层面真正关闭，避免代理端 "Connection reset by peer"
+    await waitForWsClose(oldWs)
   }
 
   const finish = (text: string) => {
@@ -446,7 +479,7 @@ export function useSpeechRecognition() {
       return
     }
 
-    release()
+    await releaseAsync()
     retryCount = 0
     finalText = ''
     interimText = ''

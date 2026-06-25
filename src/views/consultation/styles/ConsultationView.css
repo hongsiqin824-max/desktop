@@ -505,6 +505,30 @@
   animation: fadeInUp 0.25s ease;
 }
 
+/* ── 键盘快捷键操作反馈 ────────────────────────────────── */
+.action-toast {
+  position: absolute;
+  bottom: 280px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(56, 139, 253, 0.85);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  pointer-events: none;
+  animation: actionToastFade 1.5s ease-in-out forwards;
+}
+
+@keyframes actionToastFade {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ── 舌脉采集浮层 ────────────────────────────────────── */
 .capture-overlay {
   position: absolute;

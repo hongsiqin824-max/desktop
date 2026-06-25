@@ -254,6 +254,7 @@ export function buildOptionMatchMessages(
   options: { label: string; semanticDesc?: string }[],
   doctorText?: string,
   contextHint?: string,
+  multiSelect?: boolean,
 ): ILlmRequestMessage[] {
   const stepDescriptionMap: Record<string, string> = {
     analysis_review: '舌脉分析结果确认',
@@ -280,7 +281,9 @@ ${contextHint ? `上下文信息：${contextHint}` : ''}
 可选选项：${optionsText}
 用户回答："${userText}"
 
-请判断用户的回答最接近哪个选项，先在 reasoning 中推理，再返回JSON结果。`
+${multiSelect
+  ? '请判断用户的回答匹配了哪些选项（可能是一个或多个）。如果用户提到了多个选项，全部放入 matchedLabels 中。'
+  : '请判断用户的回答最接近哪个选项。'}先在 reasoning 中推理，再返回JSON结果。`
 
   return [
     { role: 'system', content: systemPrompt },

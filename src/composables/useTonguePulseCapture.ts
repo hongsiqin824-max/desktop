@@ -458,6 +458,10 @@ export function useTonguePulseCapture() {
    * 重置采集状态（重新采集时调用）
    */
   function resetCapture(): void {
+    // 先 reject 待处理的摄像头 Promise，防止 captureTongueTopImage 永远挂起
+    if (cameraFileReject) {
+      cameraFileReject(new Error('采集已重置'))
+    }
     phase.value = 'idle'
     errorMessage.value = ''
     showCamera.value = false

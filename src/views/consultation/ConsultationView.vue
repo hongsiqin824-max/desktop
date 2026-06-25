@@ -12,7 +12,7 @@ import { useLLM } from '@/composables/useLLM'
 import type { IIntentResult } from '@/types/llm'
 import { fetchLLMCompletion } from '@/api/llm'
 import { buildInterpretationMessages, parseInterpretationResult } from '@/data/llmPrompt'
-import type { IInterpretationContext } from '@/data/llmPrompt'
+import type { IInterpretationContext, IKytFormula } from '@/data/llmPrompt'
 import { FLOW_STEPS, REFUSAL_FALLBACK, MOCK_ANALYSIS } from '@/data/consultationFlow'
 import type { StepIdType, IChatOption, IChatMessage, IStepSnapshot, ISyndromeOutput, IDetailAnswer } from '@/types/consultation'
 import { KEYWORD_CONFIG, RETRY_CONFIG, generateResponse } from '@/data/consultationResponse'
@@ -20,6 +20,7 @@ import { generateMockSyndromeOutput, mergeSeverityDuplicates, getCategoryTitle }
 import { fetchRequiredQuestions, fetchFollowUpQuestions, fetchProgramQuestions, batchSaveAnswers, computeAnswerSheet, saveAnswerCalcVals, getComputeAnswerRes } from '@/api/consultationDetail'
 import { ZONE_PREFIX_MAP } from '@/data/selfFeature'
 import type { ICalcVal } from '@/api/consultationDetail'
+import type { IDetailQuestionItem, IDetailQuestionOption } from '@/types/consultationDetail'
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
 import { useTonguePulseCapture } from '@/composables/useTonguePulseCapture'
@@ -118,9 +119,39 @@ const pendingParentOption = ref<{ questionId: string; optionId: string; label: s
 /** 当前展示的子选项（较轻/较重 或 其他类型的子选项） */
 const apiChildOptions = ref<{ label: string; koihId: string; koihOptionCode?: string; semanticDesc?: string }[]>([])
 
+/** 多选队列：存储待逐个处理子选项追问的选项列表 */
+const multiSelectQueue = ref<IDetailQuestionOption[]>([])
+/** 多选模式下已收集的 selectedOptionIds（最终一次性提交） */
+const multiSelectCollectedIds = ref<string[]>([])
+/** 多选模式下当前所属的问题 ID */
+const multiSelectQuestionId = ref<string>('')
+
+/** 判断题目是否支持多选：任意一个选项有 koihOptionMutualExclusion 字段即为多选 */
+const isMultiSelectQuestion = (question: IDetailQuestionItem): boolean => {
+  return question.kytOptions.some(opt => opt.koihOptionMutualExclusion != null)
+}
+
 /** 判断子选项是否为程度类（较轻/较重） */
 const isSeverityChildren = (children: { label: string }[]): boolean => {
   return children.length >= 2 && children.every(c => c.label === '较轻' || c.label === '较重')
+}
+
+/** 判断当前是否处于程度追问状态（覆盖 API 模式 / 本地模式 / 自选症状模式） */
+const isSeverityPending = (): boolean => {
+  // API 模式：有父选项暂存 + 子选项是较轻/较重
+  if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+    return isSeverityChildren(apiChildOptions.value)
+  }
+  // 本地模式：detail 的程度追问待处理
+  if (detail.detailSeverityPending.value) {
+    return true
+  }
+  // 自选症状模式：当前子步骤是 severity
+  if (currentStepId.value === 'self_feature_question'
+      && selfFeature.selfFeatureSubStep.value === 'severity') {
+    return true
+  }
+  return false
 }
 
 // ── 舌脉采集状态 ─────────────────────────────────────────────
@@ -156,6 +187,10 @@ const { status: speechStatus, errorMessage: speechError, transcript: speechTrans
 const showVoiceToast = ref(false)
 const showErrorToast = ref(false)
 const errorToastText = ref('')
+// 键盘快捷键操作反馈 toast（蓝色，区别于红色错误 toast）
+const showActionToast = ref(false)
+const actionToastText = ref('')
+let actionToastTimer: ReturnType<typeof setTimeout> | null = null
 const isSkipping = ref(false) // 用户主动跳过朗读时设为 true，阻止 onError toast 弹出
 let lastDoctorFullText = '' // 记录当前正在朗读的医生完整文本，跳过时用于强制补全文字
 let interpretationAbortController: AbortController | null = null // Phase 2 LLM 解读请求控制器
@@ -206,6 +241,17 @@ const confirmLastUserMessage = () => {
       break
     }
   }
+}
+
+/** 显示键盘快捷键操作反馈（1.5 秒自动消失） */
+const showActionFeedback = (msg: string) => {
+  if (actionToastTimer) { clearTimeout(actionToastTimer); actionToastTimer = null }
+  actionToastText.value = msg
+  showActionToast.value = true
+  actionToastTimer = setTimeout(() => {
+    showActionToast.value = false
+    actionToastTimer = null
+  }, 1500)
 }
 
 const doctorSay = (text: string, delay = 300, persona: PersonaType = 'doctor') => {
@@ -276,6 +322,160 @@ const skipDoctorSay = () => {
   }
 }
 
+/** → 右键：跳过 TTS / 跳过问题 / 取消语音 */
+const handleArrowRight = async () => {
+  // 1. TTS 正在播报 → 停止语音 + 文字全显
+  if (isTyping.value || ttsStore.isSpeaking) {
+    skipDoctorSay()
+    showActionFeedback('→ 已跳过语音')
+    return
+  }
+
+  // 2. 语音识别中（正在录音）→ 取消识别 + 跳过问题
+  if (speechStatus.value === 'listening') {
+    stopSpeech()
+    if (isSeverityPending()) {
+      showActionFeedback('请用 ↑↓ 选择轻重程度')
+      return
+    }
+    await onSubmitText('没有')
+    showActionFeedback('→ 已取消并跳过')
+    return
+  }
+
+  // 3. 语音识别中（正在处理）→ 停止等待 + 跳过问题
+  if (speechStatus.value === 'processing') {
+    stopSpeech()
+    if (isSeverityPending()) {
+      showActionFeedback('请用 ↑↓ 选择轻重程度')
+      return
+    }
+    await onSubmitText('没有')
+    showActionFeedback('→ 已取消并跳过')
+    return
+  }
+
+  // 4. 程度追问中 → 不允许跳过
+  if (isSeverityPending()) {
+    showActionFeedback('请用 ↑↓ 选择轻重程度')
+    return
+  }
+
+  // 5. API 详细问诊中 → 跳过当前问题（等同于说"没有"）
+  if (currentStepId.value === 'detail_question') {
+    await onSubmitText('没有')
+    showActionFeedback('→ 已跳过该问题')
+    return
+  }
+
+  // 6. 自选症状 — meridian 子步骤（跳过选择，进入确认页）
+  //    第一轮（0条记录）→ 等同于"没有其他不适了" → 空数据进入确认
+  //    第二轮+（N条记录）→ 等同于"没有了，就这些" → 带已有数据进入确认
+  if (currentStepId.value === 'self_feature_question'
+      && selfFeature.selfFeatureSubStep.value === 'meridian') {
+    const label = selfFeature.selfFeatureRecords.value.length > 0
+      ? '没有了，就这些'
+      : '没有其他不适了'
+    await selfFeature.handleSelfFeatureOptionClick(label)
+    showActionFeedback('→ 已跳过自选症状')
+    return
+  }
+
+  // 7. 自选症状 — continue 子步骤（不再添加，进入确认页）
+  if (currentStepId.value === 'self_feature_question'
+      && selfFeature.selfFeatureSubStep.value === 'continue') {
+    await selfFeature.handleSelfFeatureOptionClick('没有了，就这些')
+    showActionFeedback('→ 已确认提交')
+    return
+  }
+}
+
+/** ↑ 上键：选择"较轻" */
+const handleArrowUp = async () => {
+  if (!isSeverityPending()) return
+
+  // API 模式
+  if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+    await onSubmitText('较轻')
+    showActionFeedback('↑ 已选择：较轻')
+    return
+  }
+
+  // 本地模式
+  if (detail.detailSeverityPending.value) {
+    await detail.handleDetailOptionClick('较轻')
+    showActionFeedback('↑ 已选择：较轻')
+    return
+  }
+
+  // 自选症状模式
+  if (selfFeature.selfFeatureSubStep.value === 'severity') {
+    await selfFeature.handleSelfFeatureOptionClick('较轻')
+    showActionFeedback('↑ 已选择：较轻')
+    return
+  }
+}
+
+/** ↓ 下键：选择"较重" */
+const handleArrowDown = async () => {
+  if (!isSeverityPending()) return
+
+  // API 模式
+  if (pendingParentOption.value && apiChildOptions.value.length > 0) {
+    await onSubmitText('较重')
+    showActionFeedback('↓ 已选择：较重')
+    return
+  }
+
+  // 本地模式
+  if (detail.detailSeverityPending.value) {
+    await detail.handleDetailOptionClick('较重')
+    showActionFeedback('↓ 已选择：较重')
+    return
+  }
+
+  // 自选症状模式
+  if (selfFeature.selfFeatureSubStep.value === 'severity') {
+    await selfFeature.handleSelfFeatureOptionClick('较重')
+    showActionFeedback('↓ 已选择：较重')
+    return
+  }
+}
+
+/** 键盘快捷键主入口 */
+const handleKeyDown = (e: KeyboardEvent) => {
+  // 只响应方向键
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+
+  // 焦点在输入框时不响应（避免干扰文字输入）
+  const tag = (document.activeElement as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+  // 采集阶段不响应
+  if (isCapturing.value) return
+
+  // LLM 处理中不响应
+  if (llmIsLoading.value) return
+
+  // 自动过渡步骤不响应
+  if (isAutoTransition.value) return
+
+  switch (e.key) {
+    case 'ArrowRight':
+      e.preventDefault()
+      handleArrowRight()
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      handleArrowUp()
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      handleArrowDown()
+      break
+  }
+}
+
 const clearTimers = () => {
   if (autoAdvanceTimerId.value) { clearTimeout(autoAdvanceTimerId.value); autoAdvanceTimerId.value = null }
   if (captureStartTimerId.value) { clearTimeout(captureStartTimerId.value); captureStartTimerId.value = null }
@@ -312,6 +512,12 @@ const resetAndGoHome = () => {
   detail.detailSeverityPending.value = null
   detail.detailFailCount.value = 0
   detail.genderQuestionsInjected.value = false
+  // 重置 API 详细问诊子选项 + 多选批量状态
+  pendingParentOption.value = null
+  apiChildOptions.value = []
+  multiSelectQueue.value = []
+  multiSelectCollectedIds.value = []
+  multiSelectQuestionId.value = ''
   // 重置自选特征状态
   selfFeature.resetSelfFeature()
   // 重置分析数据
@@ -638,7 +844,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
 
   // ── Phase 2 解读所需的函数级变量（由 syndrome_output 块内赋值，Phase 2 块读取）──
   let phase2Output: ISyndromeOutput | null = null
-  let phase2KytFormulas: any[] = []
+  let phase2KytFormulas: IKytFormula[] = []
 
   if (stepId === 'severity') {
     text = `请问您的【${currentSymptom.value}】严重吗？`
@@ -686,6 +892,13 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
           consultationStore.setRequiredQuestions(result.questionList)
           if (import.meta.env.DEV) {
             console.log('[详细问诊] 必问问题已更新:', result.questionList.length, '个问题')
+            // ── 调试日志：打印每个选项的互斥组标识（验证单选/多选标志）──
+            for (const q of result.questionList) {
+              console.log(`[互斥组] ${q.kqihName} (${q.kqihId}):`)
+              for (const opt of q.kytOptions) {
+                console.log(`  → "${opt.koihOption}" mutualExclusion=${JSON.stringify(opt.koihOptionMutualExclusion)}`)
+              }
+            }
           }
         } catch (e) {
           if (import.meta.env.DEV) {
@@ -735,7 +948,7 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
 
     // ── 获取辨证结果：computeAnswerSheet（触发计算） + getComputeAnswerRes（取结果）──
     let output: ISyndromeOutput
-    let savedKytFormulas: any[] = [] // ★ 提升到 try 外，供 Phase 2 LLM 解读使用
+    let savedKytFormulas: IKytFormula[] = [] // ★ 提升到 try 外，供 Phase 2 LLM 解读使用
     const mockOutput = () => generateMockSyndromeOutput(currentSymptom.value, detail.detailAnswers.value, selfFeature.selfFeatureRecords.value, analysisData.value)
 
     // 1. 触发后端计算
@@ -751,6 +964,10 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
     try {
       const resData = await getComputeAnswerRes(consultationStore.answerSheetId)
       const obj = resData.obj
+
+      // ── 调试日志：打印后端原始返回的 tuijianList ──
+      console.log('[辨证结果] 📋 后端原始 tuijianList:', JSON.stringify(obj?.tuijianList, null, 2))
+      console.log('[辨证结果] 📋 后端返回的所有字段:', Object.keys(obj || {}))
 
       // 保存方剂详情供 Phase 2 LLM 解读使用
       savedKytFormulas = obj?.kytFormulas || []
@@ -1027,24 +1244,43 @@ async function handleApiDetailOption(label: string, originalText?: string) {
   if (pendingParentOption.value && apiChildOptions.value.length > 0) {
     const selectedChild = apiChildOptions.value.find(c => c.label === label)
     if (selectedChild) {
-      // 记录答案：父选项 ID + 子选项 ID（后端保存用）
-      consultationStore.addDetailSelectedAnswer({
-        questionId: pendingParentOption.value.questionId,
-        selectedOptionIds: [pendingParentOption.value.optionId, selectedChild.koihId],
-      })
-      // 同步到汇总显示用的 detailAnswers
+      // 同步到汇总显示用的 detailAnswers（两种模式都需要）
       detail.detailAnswers.value.push({
         taCode: selectedChild.koihOptionCode || selectedChild.koihId,
         label: `${pendingParentOption.value.label}(${selectedChild.label})`,
         category: pendingParentOption.value.category,
         questionText: pendingParentOption.value.questionText,
       })
+
+      // 先保存 questionId，再清除子选项状态
+      const savedQuestionId = pendingParentOption.value.questionId
+      pendingParentOption.value = null
+      apiChildOptions.value = []
+
+      // ── 多选批量模式：收集子选项 ID，处理队列中下一个 ──
+      // 用 multiSelectQuestionId 判断是否在多选模式（队列 shift 后可能已空）
+      if (multiSelectQuestionId.value) {
+        multiSelectCollectedIds.value.push(selectedChild.koihId)
+        await processNextMultiSelectItem()
+        return
+      }
+
+      // ── 单选模式：直接提交 ──
+      consultationStore.addDetailSelectedAnswer({
+        questionId: savedQuestionId,
+        selectedOptionIds: [selectedChild.koihId],
+      })
+      await advanceApiQuestion()
+      return
     }
-    // 清除子选项状态
+    // 未匹配到子选项，清除状态并推进
     pendingParentOption.value = null
     apiChildOptions.value = []
-    // 推进到下一题
-    await advanceApiQuestion()
+    if (multiSelectQuestionId.value) {
+      await processNextMultiSelectItem()
+    } else {
+      await advanceApiQuestion()
+    }
     return
   }
 
@@ -1079,7 +1315,7 @@ async function handleApiDetailOption(label: string, originalText?: string) {
           }
           consultationStore.addDetailSelectedAnswer({
             questionId: apiQuestion.kqihId,
-            selectedOptionIds: [selectedOption.koihId, child.koihId],
+            selectedOptionIds: [child.koihId],
           })
           // 同步到汇总显示用的 detailAnswers
           detail.detailAnswers.value.push({
@@ -1138,6 +1374,134 @@ async function handleApiDetailOption(label: string, originalText?: string) {
     questionText: buildDoctorQuestionText(apiQuestion),
   })
   await advanceApiQuestion()
+}
+
+// ── API 模式多选处理：用户一句话说了多个选项 ──────────────────────
+async function handleApiDetailBatchSelect(labels: string[]) {
+  const apiQuestion = consultationStore.getCurrentQuestion()
+  if (!apiQuestion) return
+
+  // ① 查找选项对象
+  const selectedOptions = labels
+    .map(label => apiQuestion.kytOptions.find(opt => opt.koihOption === label))
+    .filter((opt): opt is IDetailQuestionOption => opt != null)
+
+  if (selectedOptions.length === 0) {
+    console.warn('[多选] 未找到匹配的选项，跳过')
+    await advanceApiQuestion()
+    return
+  }
+
+  if (import.meta.env.DEV) {
+    console.log('[多选] 匹配到选项:', selectedOptions.map(o => o.koihOption))
+  }
+
+  // ② 互斥检查：遍历所有选项对，检查 mutualExclusion
+  const conflicts: [IDetailQuestionOption, IDetailQuestionOption][] = []
+  for (let i = 0; i < selectedOptions.length; i++) {
+    for (let j = i + 1; j < selectedOptions.length; j++) {
+      const a = selectedOptions[i]!
+      const b = selectedOptions[j]!
+      const aExcludes = a.koihOptionMutualExclusion || []
+      const bExcludes = b.koihOptionMutualExclusion || []
+      if (aExcludes.includes(b.koihOptionCode) || bExcludes.includes(a.koihOptionCode)) {
+        conflicts.push([a, b])
+      }
+    }
+  }
+
+  // ③ 有冲突 → 追问用户
+  if (conflicts.length > 0) {
+    const [optA, optB] = conflicts[0]!
+    const question = `您说的【${optA.koihOption}】和【${optB.koihOption}】不能同时选择，请问具体是哪一种？`
+    console.log('[多选] 互斥冲突:', optA.koihOption, 'vs', optB.koihOption)
+    await doctorSay(question)
+    return
+  }
+
+  // ④ 无冲突 → 初始化多选状态
+  multiSelectCollectedIds.value = []
+  multiSelectQuestionId.value = apiQuestion.kqihId
+
+  // 分类：有子选项的放入队列逐个追问，无子选项的直接记录
+  const queueItems: IDetailQuestionOption[] = []
+  for (const opt of selectedOptions) {
+    if (opt.koihHasChild === 1 && opt.koihChildsOption.length > 0) {
+      queueItems.push(opt)
+    } else {
+      // 无子选项 → 直接记录
+      multiSelectCollectedIds.value.push(opt.koihId)
+      detail.detailAnswers.value.push({
+        taCode: opt.koihOptionCode || opt.koihId,
+        label: opt.koihOption,
+        category: apiQuestion.kqihName,
+        questionText: buildDoctorQuestionText(apiQuestion),
+      })
+    }
+  }
+
+  // ⑤ 如果全部无子选项 → 直接提交
+  if (queueItems.length === 0) {
+    consultationStore.addDetailSelectedAnswer({
+      questionId: apiQuestion.kqihId,
+      selectedOptionIds: [...multiSelectCollectedIds.value],
+    })
+    multiSelectCollectedIds.value = []
+    multiSelectQueue.value = []
+    await advanceApiQuestion()
+    return
+  }
+
+  // ⑥ 有子选项需要逐个追问 → 设置队列，开始第一个
+  multiSelectQueue.value = queueItems
+  await processNextMultiSelectItem()
+}
+
+/** 处理多选队列中的下一个选项（追问子选项或直接提交） */
+async function processNextMultiSelectItem() {
+  if (multiSelectQueue.value.length === 0) {
+    // 队列清空 → 提交所有收集的 ID
+    const apiQuestion = consultationStore.getCurrentQuestion()
+    if (apiQuestion) {
+      consultationStore.addDetailSelectedAnswer({
+        questionId: multiSelectQuestionId.value,
+        selectedOptionIds: [...multiSelectCollectedIds.value],
+      })
+    }
+    multiSelectCollectedIds.value = []
+    multiSelectQuestionId.value = ''
+    await advanceApiQuestion()
+    return
+  }
+
+  // 取出队列第一个选项，设置 pendingParentOption 进入子选项模式
+  const currentOpt = multiSelectQueue.value.shift()!
+  const severityChildren = currentOpt.koihChildsOption.filter(
+    c => c.koihOption === '较轻' || c.koihOption === '较重'
+  )
+  const isSeverity = severityChildren.length >= 2
+
+  pendingParentOption.value = {
+    questionId: multiSelectQuestionId.value,
+    optionId: currentOpt.koihId,
+    label: currentOpt.koihOption,
+    category: consultationStore.getCurrentQuestion()?.kqihName || '',
+    questionText: buildDoctorQuestionText(consultationStore.getCurrentQuestion()!),
+  }
+  apiChildOptions.value = currentOpt.koihChildsOption.map(child => ({
+    label: child.koihOption,
+    koihId: child.koihId,
+    koihOptionCode: child.koihOptionCode,
+    semanticDesc: child.koihOpIllustrate || undefined,
+  }))
+
+  // 追问
+  if (isSeverity) {
+    await doctorSay(`${currentOpt.koihOption}的程度是较轻还是较重？`)
+  } else {
+    const childLabels = apiChildOptions.value.map(c => c.label).join('、')
+    await doctorSay(`${currentOpt.koihOption}请问以下哪种更符合？您可以直接说：${childLabels}`)
+  }
 }
 
 // ── 累加自选症状的经脉八维数值 ──────────────────────────────────
@@ -1567,6 +1931,7 @@ const onSubmitText = async (text: string) => {
     let currentDoctorText: string | undefined
     let contextHint: string | undefined
     let llmOptions: { label: string; semanticDesc?: string }[]
+    let isCurrentQuestionMultiSelect = false
 
     if (currentStepId.value === 'detail_question') {
       // ── 否定回答检测：用户说"没有"、"无"、"都不是"等，跳过当前问题 ──
@@ -1598,6 +1963,8 @@ const onSubmitText = async (text: string) => {
           label: opt.koihOption,
           semanticDesc: opt.koihOpIllustrate || undefined,
         }))
+        // 判断是否为多选题
+        isCurrentQuestionMultiSelect = isMultiSelectQuestion(apiQuestion)
       } else {
         // 本地降级模式：使用本地题库选项
         const question = detail.findQuestion(detail.detailQuestionCategory.value)
@@ -1618,7 +1985,7 @@ const onSubmitText = async (text: string) => {
       llmOptions = llmOptions.filter(opt => clarificationCandidates.value.includes(opt.label))
     }
 
-    const optionResult = await classifyOption(text, currentStepId.value, llmOptions, currentDoctorText, contextHint); isTyping.value = false
+    const optionResult = await classifyOption(text, currentStepId.value, llmOptions, currentDoctorText, contextHint, isCurrentQuestionMultiSelect); isTyping.value = false
 
     if (optionResult && optionResult.matchedLabel && optionResult.confidence >= 0.5) {
       clarificationCandidates.value = []
@@ -1660,19 +2027,33 @@ const onSubmitText = async (text: string) => {
       }
     }
 
-    // detail_question 多部位批量匹配：用户一次说出多个部位时，批量记录所有匹配选项
+    // detail_question 多部位批量匹配：用户一次说出多个选项时，批量处理
     if (currentStepId.value === 'detail_question' && optionResult && optionResult.matchedLabels.length >= 2 && !optionResult.clarificationQuestion) {
-      const question = detail.findQuestion(detail.detailQuestionCategory.value)
-      const validLabels = optionResult.matchedLabels.filter(label => question?.options.some(opt => opt.label === label))
-      if (validLabels.length >= 2) {
-        clarificationCandidates.value = []
-        const lastIdx = messages.value.length - 1
-        if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
-        // 显示用户原始输入
-        messages.value.push({ role: 'user', text })
-        await scrollToBottom()
-        await detail.handleDetailBatchSelect(validLabels)
-        return
+      const lastIdx = messages.value.length - 1
+      if (lastIdx >= 0 && messages.value[lastIdx]!.role === 'user') messages.value.splice(lastIdx, 1)
+      messages.value.push({ role: 'user', text })
+      await scrollToBottom()
+
+      if (consultationStore.getCurrentQuestion()) {
+        // ── API 模式多选 ──
+        const apiQuestion = consultationStore.getCurrentQuestion()!
+        const validLabels = optionResult.matchedLabels.filter(label =>
+          apiQuestion.kytOptions.some(opt => opt.koihOption === label)
+        )
+        if (validLabels.length >= 2) {
+          clarificationCandidates.value = []
+          await handleApiDetailBatchSelect(validLabels)
+          return
+        }
+      } else {
+        // ── 本地降级模式多选 ──
+        const question = detail.findQuestion(detail.detailQuestionCategory.value)
+        const validLabels = optionResult.matchedLabels.filter(label => question?.options.some(opt => opt.label === label))
+        if (validLabels.length >= 2) {
+          clarificationCandidates.value = []
+          await detail.handleDetailBatchSelect(validLabels)
+          return
+        }
       }
     }
 
@@ -1751,6 +2132,8 @@ watch(speechTranscript, (val) => { if (speechStatus.value === 'listening' && val
 // ── 初始化 ───────────────────────────────────────────────────
 onMounted(async () => {
   consultationStore.startConsultation()
+  // 注册键盘快捷键监听
+  document.addEventListener('keydown', handleKeyDown)
   await doctorSay(`${userName.value}您好，我是您的中医师 🌿 接下来我会帮您了解一下身体状况，请放松心情～`, 800)
   await goToStep('initial')
 })
@@ -1766,7 +2149,15 @@ watch(() => ttsStore.stopGeneration, () => {
   }
 })
 
-onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
+onUnmounted(() => {
+  isUnmounting = true
+  clearTimers()
+  stopSpeech()
+  // 清除键盘快捷键监听
+  document.removeEventListener('keydown', handleKeyDown)
+  // 清理 action toast 定时器
+  if (actionToastTimer) { clearTimeout(actionToastTimer); actionToastTimer = null }
+})
 </script>
 
 <template>
@@ -2054,6 +2445,9 @@ onUnmounted(() => { isUnmounting = true; clearTimers(); stopSpeech() })
 
     <!-- 错误提示 -->
     <div class="error-toast" v-if="showErrorToast">⚠️ {{ errorToastText }}</div>
+
+    <!-- 键盘快捷键操作反馈 -->
+    <div class="action-toast" v-if="showActionToast">{{ actionToastText }}</div>
 
   </div>
 </template>

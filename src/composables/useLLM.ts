@@ -62,11 +62,12 @@ export function useLLM() {
     options: { label: string; semanticDesc?: string }[],
     doctorText?: string,
     contextHint?: string,
+    multiSelect?: boolean,
   ): Promise<IOptionMatchResult | null> => {
     isLoading.value = true
     error.value = ''
 
-    const messages = buildOptionMatchMessages(userText, stepId, options, doctorText, contextHint)
+    const messages = buildOptionMatchMessages(userText, stepId, options, doctorText, contextHint, multiSelect)
 
     abort()
     currentController = new AbortController()

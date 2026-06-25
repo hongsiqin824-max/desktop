@@ -51,6 +51,8 @@ export const useTTSStore = defineStore('globalTTS', () => {
   let pcmBufferLen = 0
   let nextPlayTime = 0
   let lastSourceEndTime = 0
+  /** 已调度的音频源，cleanup 时逐个 stop() 防止重叠 */
+  let pendingSources: AudioBufferSourceNode[] = []
   let firstAudioReceived = false
   let typewriterStarted = false
   let twCharIndex = 0
@@ -78,13 +80,17 @@ export const useTTSStore = defineStore('globalTTS', () => {
       ws = null
     }
     if (audioContext) {
-      try { audioContext.close() } catch { /* 忽略异常 */ }
-      audioContext = null
+      // 停掉所有已调度但未播完的音频源，防止与下一段重叠
+      for (const src of pendingSources) {
+        try { src.stop() } catch { /* 已自然结束则忽略 */ }
+      }
+      pendingSources = []
+      // AudioContext 复用，不关闭；仅重置调度状态
+      nextPlayTime = 0
+      lastSourceEndTime = 0
     }
     pcmBuffer = []
     pcmBufferLen = 0
-    nextPlayTime = 0
-    lastSourceEndTime = 0
     firstAudioReceived = false
     typewriterStarted = false
     twCharIndex = 0
@@ -163,6 +169,12 @@ export const useTTSStore = defineStore('globalTTS', () => {
     source.buffer = audioBuffer
     source.playbackRate.value = currentSpeed
     source.connect(audioContext.destination)
+    // 追踪已调度的源，cleanup 时可 stop；自然播完后自动移除
+    pendingSources.push(source)
+    source.onended = () => {
+      const idx = pendingSources.indexOf(source)
+      if (idx !== -1) pendingSources.splice(idx, 1)
+    }
 
     const now = audioContext.currentTime
     if (nextPlayTime < now) {
@@ -231,9 +243,11 @@ export const useTTSStore = defineStore('globalTTS', () => {
     const estimatedMs = ((text.length / charsPerSec) * 1000 + 30000) / speed
     safetyTimer = setTimeout(localResolve, Math.max(estimatedMs, 20000))
 
-    // 创建 AudioContext（WS 连接期间初始化，减少首帧延迟）
+    // 创建或复用 AudioContext（采样率匹配 TTS 输出，避免浏览器重采样）
     try {
-      audioContext = new AudioContext()
+      if (!audioContext || audioContext.state === 'closed') {
+        audioContext = new AudioContext({ sampleRate: TTS_SAMPLE_RATE })
+      }
       await audioContext.resume()
     } catch {
       // AudioContext 不可用 → 降级为纯文字

@@ -97,10 +97,25 @@ const meridianTubes = allMeridianData.map(m => {
   return { code: m.code, side: m.side, geometry: tubeGeo, color: def?.color ?? MERIDIAN_DEFAULT_COLOR }
 })
 
+// 碰撞检测管道：半径 0.008（比视觉管道 0.015 更细），不可见材质
+// 避免相邻经脉碰撞区域重叠（如 JM8/JM12 间距仅 0.022），用于射线检测悬停
+const meridianCollisionRadius = 0.008
+const collisionTubes = allMeridianData.map(m => {
+  const curve = new THREE.CatmullRomCurve3(
+    m.pathPoints.map(p => new THREE.Vector3(p[0], p[1], p[2])),
+    false,
+    'catmullrom',
+    0.5,
+  )
+  const collisionGeo = new THREE.TubeGeometry(curve, meridianTubeSegments, meridianCollisionRadius, meridianRadialSegments, false)
+  return { code: m.code, side: m.side, geometry: collisionGeo }
+})
+
 // ── 收集 Three.js 对象引用（用于命令式更新材质）──────────────
 // 键格式：经脉code + 侧别后缀，如 'JM1-right'、'JM1-left'、'JM13'（中线无后缀）
 const tubeMeshes = new Map<string, THREE.Mesh>()
 const acupointMeshes = new Map<string, THREE.Mesh>()
+const collisionMeshes = new Map<string, THREE.Mesh>()
 
 // ── 经脉点击处理 ─────────────────────────────────────────────
 const handleMeridianMeshClick = (event: any) => {
@@ -138,6 +153,43 @@ const handleMeridianHover = (code: MeridianCodeType) => {
 const handleMeridianHoverEnd = () => {
   meridian.onMeridianHover(null)
   tooltipVisible.value = false
+}
+
+// ── 射线检测悬停（直接对碰撞管道做射线检测，替代不可靠的 pointer-enter）──
+const hoverRaycaster = new THREE.Raycaster()
+const hoverMouseNDC = new THREE.Vector2()
+
+const onPointerMove = (e: PointerEvent) => {
+  updateTooltipPosition(e)
+
+  // [DEBUG] 临时调试日志：检查三个 Map 是否收集到 Three.js 对象
+  if (import.meta.env.DEV && Math.random() < 0.02) {
+    console.log('[debug] tubeMeshes:', tubeMeshes.size, 'collisionMeshes:', collisionMeshes.size, 'acupointMeshes:', acupointMeshes.size)
+  }
+
+  const camera = cameraRef.value
+  const container = canvasContainerRef.value
+  if (!camera || !container) return
+
+  const rect = container.getBoundingClientRect()
+  hoverMouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+  hoverMouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+
+  hoverRaycaster.setFromCamera(hoverMouseNDC, camera)
+
+  // 对所有碰撞管道做射线检测（Three.js 自动按距离排序，hits[0] 为最近）
+  const allCollisionMeshes = Array.from(collisionMeshes.values())
+  const hits = hoverRaycaster.intersectObjects(allCollisionMeshes, false)
+
+  if (hits.length > 0) {
+    const firstHit = hits[0]!
+    const code = firstHit.object.userData?.meridianCode as MeridianCodeType
+    if (code) {
+      handleMeridianHover(code)
+      return
+    }
+  }
+  handleMeridianHoverEnd()
 }
 
 // ── 关闭经脉信息面板 ─────────────────────────────────────────
@@ -286,6 +338,13 @@ onUnmounted(() => {
   meridianTubes.forEach(tube => {
     tube.geometry?.dispose()
   })
+
+  // 清理碰撞检测管道的 TubeGeometry
+  collisionTubes.forEach(tube => {
+    tube.geometry?.dispose()
+  })
+
+  collisionMeshes.clear()
 })
 </script>
 
@@ -298,7 +357,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 3D画布 -->
-    <div ref="canvasContainerRef" class="meridian-canvas-wrapper" @mousemove="updateTooltipPosition">
+    <div ref="canvasContainerRef" class="meridian-canvas-wrapper" @pointermove="onPointerMove" @pointerleave="handleMeridianHoverEnd">
     <TresCanvas
       v-if="meridian.modelLoaded.value"
       class="meridian-canvas"
@@ -350,8 +409,6 @@ onUnmounted(() => {
         :geometry="tube.geometry"
         :user-data="{ meridianCode: tube.code }"
         @click="handleMeridianMeshClick"
-        @pointer-enter="() => handleMeridianHover(tube.code)"
-        @pointer-leave="handleMeridianHoverEnd"
         :ref="(el: any) => { const key = tube.code + (tube.side ? '-' + tube.side : ''); if (el?.$__tresObject) tubeMeshes.set(key, el.$__tresObject); else tubeMeshes.delete(key) }"
       >
         <TresMeshPhysicalMaterial
@@ -375,8 +432,6 @@ onUnmounted(() => {
           :position="ap.position"
           :user-data="{ meridianCode: m.code, acupointName: ap.name }"
           @click="(e: any) => { meridian.onMeridianClick(m.code, ap.position); emit('meridian-select', { meridianCode: m.code, point: ap.position }) }"
-          @pointer-enter="() => handleMeridianHover(m.code)"
-          @pointer-leave="handleMeridianHoverEnd"
           :ref="(el: any) => { const key = m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai; if (el?.$__tresObject) acupointMeshes.set(key, el.$__tresObject); else acupointMeshes.delete(key) }"
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
@@ -391,6 +446,21 @@ onUnmounted(() => {
           />
         </TresMesh>
       </template>
+
+      <!-- 碰撞检测管道（不可见，仅用于射线检测悬停） -->
+      <TresMesh
+        v-for="tube in collisionTubes"
+        :key="'col-' + tube.code + (tube.side ? '-' + tube.side : '')"
+        :geometry="tube.geometry"
+        :user-data="{ meridianCode: tube.code }"
+        :ref="(el: any) => {
+          const key = tube.code + (tube.side ? '-' + tube.side : '')
+          if (el?.$__tresObject) collisionMeshes.set(key, el.$__tresObject)
+          else collisionMeshes.delete(key)
+        }"
+      >
+        <TresMeshBasicMaterial :visible="false" />
+      </TresMesh>
     </TresCanvas>
     </div>
 
