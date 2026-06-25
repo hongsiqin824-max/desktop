@@ -159,32 +159,47 @@ const handleMeridianHoverEnd = () => {
 const hoverRaycaster = new THREE.Raycaster()
 const hoverMouseNDC = new THREE.Vector2()
 
+// RAF 节流：每帧最多做一次射线检测，避免 pointermove 高频触发导致旋转卡顿
+let raycastScheduled = false
+
 const onPointerMove = (e: PointerEvent) => {
+  // tooltip 位置实时更新（轻量操作，不需要节流）
   updateTooltipPosition(e)
 
-  const camera = cameraRef.value
-  const container = canvasContainerRef.value
-  if (!camera || !container) return
+  if (raycastScheduled) return
+  raycastScheduled = true
 
-  const rect = container.getBoundingClientRect()
-  hoverMouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-  hoverMouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+  // 记录当前鼠标位置，RAF 回调中使用
+  const clientX = e.clientX
+  const clientY = e.clientY
 
-  hoverRaycaster.setFromCamera(hoverMouseNDC, camera)
+  requestAnimationFrame(() => {
+    raycastScheduled = false
 
-  // 对所有碰撞管道做射线检测（Three.js 自动按距离排序，hits[0] 为最近）
-  const allCollisionMeshes = Array.from(collisionMeshes.values())
-  const hits = hoverRaycaster.intersectObjects(allCollisionMeshes, false)
+    const camera = cameraRef.value
+    const container = canvasContainerRef.value
+    if (!camera || !container) return
 
-  if (hits.length > 0) {
-    const firstHit = hits[0]!
-    const code = firstHit.object.userData?.meridianCode as MeridianCodeType
-    if (code) {
-      handleMeridianHover(code)
-      return
+    const rect = container.getBoundingClientRect()
+    hoverMouseNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1
+    hoverMouseNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1
+
+    hoverRaycaster.setFromCamera(hoverMouseNDC, camera)
+
+    // 对所有碰撞管道做射线检测（Three.js 自动按距离排序，hits[0] 为最近）
+    const allCollisionMeshes = Array.from(collisionMeshes.values())
+    const hits = hoverRaycaster.intersectObjects(allCollisionMeshes, false)
+
+    if (hits.length > 0) {
+      const firstHit = hits[0]!
+      const code = firstHit.object.userData?.meridianCode as MeridianCodeType
+      if (code) {
+        handleMeridianHover(code)
+        return
+      }
     }
-  }
-  handleMeridianHoverEnd()
+    handleMeridianHoverEnd()
+  })
 }
 
 // ── 关闭经脉信息面板 ─────────────────────────────────────────
