@@ -244,3 +244,25 @@
   white-space: nowrap;
   animation: meridianFadeIn 0.5s ease;
 }
+
+/* ── 确认不适按钮 ───────────────────────────────────────────── */
+.meridian-confirm-btn {
+  width: 100%;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.meridian-confirm-btn:hover {
+  opacity: 0.9;
+}
+
+.meridian-confirm-btn:active {
+  transform: scale(0.98);
+}

@@ -117,7 +117,11 @@ const tubeMeshes = new Map<string, THREE.Mesh>()
 const acupointMeshes = new Map<string, THREE.Mesh>()
 const collisionMeshes = new Map<string, THREE.Mesh>()
 
-// ── 经脉点击处理 ─────────────────────────────────────────────
+// ── 二次确认：暂存用户点击的经脉信息，等待用户确认后才 emit ──
+const pendingMeridianCode = ref<MeridianCodeType | null>(null)
+const pendingPoint = ref<Point3D | undefined>(undefined)
+
+// ── 经脉点击处理（只高亮 + 显示面板，不 emit，等待用户确认）────
 const handleMeridianMeshClick = (event: any) => {
   if (!event?.object?.userData?.meridianCode) return
   const code = event.object.userData.meridianCode as MeridianCodeType
@@ -125,10 +129,11 @@ const handleMeridianMeshClick = (event: any) => {
     ? [event.point.x, event.point.y, event.point.z]
     : undefined
   meridian.onMeridianClick(code, point)
-  emit('meridian-select', { meridianCode: code, point })
+  pendingMeridianCode.value = code
+  pendingPoint.value = point
 }
 
-// ── 人体模型点击处理（模式C：空白区域自动匹配最近经脉）─────
+// ── 人体模型点击处理（空白区域自动匹配最近经脉，同样等待确认）──
 const handleBodyClick = (event: any) => {
   if (!event?.point) return
   if (event.object?.userData?.meridianCode) return
@@ -136,7 +141,8 @@ const handleBodyClick = (event: any) => {
   const nearest = meridian.findNearestMeridian(point)
   if (nearest) {
     meridian.onMeridianClick(nearest, point)
-    emit('meridian-select', { meridianCode: nearest, point })
+    pendingMeridianCode.value = nearest
+    pendingPoint.value = point
   }
 }
 
@@ -202,9 +208,31 @@ const onPointerMove = (e: PointerEvent) => {
   })
 }
 
-// ── 关闭经脉信息面板 ─────────────────────────────────────────
+// ── 关闭经脉信息面板（取消选择）───────────────────────────────
 const handlePanelClose = () => {
   meridian.clearActive()
+  pendingMeridianCode.value = null
+  pendingPoint.value = undefined
+}
+
+// ── 确认该经脉部位不适（用户点击确认按钮后 emit）─────────────
+const handleConfirmDiscomfort = () => {
+  if (pendingMeridianCode.value) {
+    emit('meridian-select', {
+      meridianCode: pendingMeridianCode.value,
+      point: pendingPoint.value,
+    })
+  }
+  // 清空暂存状态
+  pendingMeridianCode.value = null
+  pendingPoint.value = undefined
+}
+
+// ── 穴位点击处理（与经脉点击相同逻辑，等待用户确认）──────────
+const handleAcupointClick = (code: MeridianCodeType, position: Point3D) => {
+  meridian.onMeridianClick(code, position)
+  pendingMeridianCode.value = code
+  pendingPoint.value = position
 }
 
 // ── 当前激活经脉的定义 ───────────────────────────────────────
@@ -482,7 +510,7 @@ onUnmounted(() => {
           :key="m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai"
           :position="ap.position"
           :user-data="{ meridianCode: m.code, acupointName: ap.name, meshType: 'acupoint', side: m.side }"
-          @click="(e: any) => { meridian.onMeridianClick(m.code, ap.position); emit('meridian-select', { meridianCode: m.code, point: ap.position }) }"
+          @click="handleAcupointClick(m.code, ap.position)"
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
           <TresMeshPhysicalMaterial
@@ -534,6 +562,7 @@ onUnmounted(() => {
       v-if="activeMeridianDef"
       :meridian-def="activeMeridianDef"
       @close="handlePanelClose"
+      @confirm-discomfort="handleConfirmDiscomfort"
     />
   </div>
 </template>

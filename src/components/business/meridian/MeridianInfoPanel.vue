@@ -10,6 +10,8 @@ defineProps<{
 defineEmits<{
   /** 关闭面板 */
   (e: 'close'): void
+  /** 确认该经脉部位不适 */
+  (e: 'confirm-discomfort'): void
 }>()
 </script>
 
@@ -49,6 +51,13 @@ defineEmits<{
           {{ ap.name }}
         </span>
       </div>
+    </div>
+
+    <!-- 确认按钮 -->
+    <div class="meridian-panel-section">
+      <button class="meridian-confirm-btn" @click="$emit('confirm-discomfort')">
+        该部位不适
+      </button>
     </div>
   </div>
 </template>
