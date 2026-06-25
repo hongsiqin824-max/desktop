@@ -103,7 +103,8 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
             println!("[ble_scan]   - 设备: {}, ID: {}", name_str, p.id());
 
             if let Some(ref name) = props.local_name {
-                if name.starts_with("MZY") {
+                // 设备名称格式可能是 "MZY-xxx" 或 "CH592_ble_uart [MZY-PRmini0000]"
+                if name.contains("MZY") {
                     devices.push(BleDevice {
                         id: p.id().to_string(),
                         name: Some(name.clone()),
