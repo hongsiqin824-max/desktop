@@ -1,7 +1,7 @@
 <!-- 经脉3D交互组件：人体模型 + 14条经脉曲线 + 穴位标记点 + 交互高亮 -->
 <!-- 科技风半透明主题，支持点击经脉、悬停高亮、自由旋转 -->
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import * as THREE from 'three'
@@ -162,11 +162,6 @@ const hoverMouseNDC = new THREE.Vector2()
 const onPointerMove = (e: PointerEvent) => {
   updateTooltipPosition(e)
 
-  // [DEBUG] 临时调试日志：检查三个 Map 是否收集到 Three.js 对象
-  if (import.meta.env.DEV && Math.random() < 0.02) {
-    console.log('[debug] tubeMeshes:', tubeMeshes.size, 'collisionMeshes:', collisionMeshes.size, 'acupointMeshes:', acupointMeshes.size)
-  }
-
   const camera = cameraRef.value
   const container = canvasContainerRef.value
   if (!camera || !container) return
@@ -202,6 +197,44 @@ const activeMeridianDef = computed(() => {
   if (!meridian.activeMeridian.value) return null
   return meridian.getMeridianDef(meridian.activeMeridian.value) ?? null
 })
+
+// ── 从场景树中收集 Three.js Mesh 引用（替代不可靠的 ref 回调）────
+// TresJS 5.8.1 的 ref 回调无法获取底层 THREE.Mesh，改用 scene.traverse 遍历
+// 通过 userData.meshType 区分三类 Mesh：tube（可见管道）、acupoint（穴位）、collision（碰撞管道）
+const collectMeshesFromScene = (scene: THREE.Object3D) => {
+  // 先清空，防止重复收集导致引用混乱
+  tubeMeshes.clear()
+  acupointMeshes.clear()
+  collisionMeshes.clear()
+
+  scene.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    const userData = obj.userData
+    if (!userData?.meridianCode || !userData?.meshType) return
+
+    const code = userData.meridianCode as MeridianCodeType
+    const side = userData.side as string | undefined
+    const meshType = userData.meshType as string
+
+    if (meshType === 'tube') {
+      const key = code + (side ? '-' + side : '')
+      tubeMeshes.set(key, obj)
+    } else if (meshType === 'acupoint') {
+      const apName = userData.acupointName as string || ''
+      const key = code + (side ? '-' + side : '') + '-ap-' + apName
+      acupointMeshes.set(key, obj)
+    } else if (meshType === 'collision') {
+      const key = code + (side ? '-' + side : '')
+      collisionMeshes.set(key, obj)
+    }
+  })
+
+  console.log('[经脉视图] mesh 收集完成:', {
+    tubes: tubeMeshes.size,
+    acupoints: acupointMeshes.size,
+    collisions: collisionMeshes.size,
+  })
+}
 
 // ── 命令式更新材质（避免响应式模板绑定导致的循环更新）────────
 const updateMaterials = () => {
@@ -277,10 +310,14 @@ watch(
   { deep: true }
 )
 
-// 场景加载完成后初始化材质
-watch(() => meridian.modelLoaded.value, (loaded) => {
-  if (loaded) {
-    nextTick(updateMaterials)
+// 相机就绪后收集场景中的 Mesh 引用并初始化材质
+watch(cameraRef, (camera) => {
+  if (camera?.parent) {
+    // 等 TresJS 完成一帧渲染，确保所有 v-for 的 TresMesh 已添加到场景树
+    requestAnimationFrame(() => {
+      collectMeshesFromScene(camera.parent!)
+      updateMaterials()
+    })
   }
 })
 
@@ -407,9 +444,8 @@ onUnmounted(() => {
         v-for="tube in meridianTubes"
         :key="tube.code + (tube.side ? '-' + tube.side : '')"
         :geometry="tube.geometry"
-        :user-data="{ meridianCode: tube.code }"
+        :user-data="{ meridianCode: tube.code, meshType: 'tube', side: tube.side }"
         @click="handleMeridianMeshClick"
-        :ref="(el: any) => { const key = tube.code + (tube.side ? '-' + tube.side : ''); if (el?.$__tresObject) tubeMeshes.set(key, el.$__tresObject); else tubeMeshes.delete(key) }"
       >
         <TresMeshPhysicalMaterial
           :color="tube.color"
@@ -430,9 +466,8 @@ onUnmounted(() => {
           v-for="(ap, ai) in m.keyAcupoints"
           :key="m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai"
           :position="ap.position"
-          :user-data="{ meridianCode: m.code, acupointName: ap.name }"
+          :user-data="{ meridianCode: m.code, acupointName: ap.name, meshType: 'acupoint', side: m.side }"
           @click="(e: any) => { meridian.onMeridianClick(m.code, ap.position); emit('meridian-select', { meridianCode: m.code, point: ap.position }) }"
-          :ref="(el: any) => { const key = m.code + (m.side ? '-' + m.side : '') + '-ap-' + ai; if (el?.$__tresObject) acupointMeshes.set(key, el.$__tresObject); else acupointMeshes.delete(key) }"
         >
           <TresSphereGeometry :args="[0.012, 16, 16]" />
           <TresMeshPhysicalMaterial
@@ -452,12 +487,7 @@ onUnmounted(() => {
         v-for="tube in collisionTubes"
         :key="'col-' + tube.code + (tube.side ? '-' + tube.side : '')"
         :geometry="tube.geometry"
-        :user-data="{ meridianCode: tube.code }"
-        :ref="(el: any) => {
-          const key = tube.code + (tube.side ? '-' + tube.side : '')
-          if (el?.$__tresObject) collisionMeshes.set(key, el.$__tresObject)
-          else collisionMeshes.delete(key)
-        }"
+        :user-data="{ meridianCode: tube.code, meshType: 'collision', side: tube.side }"
       >
         <TresMeshBasicMaterial :visible="false" />
       </TresMesh>
