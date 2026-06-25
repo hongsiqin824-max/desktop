@@ -45,6 +45,7 @@ class BleCharacteristic extends EventTarget {
   constructor(uuid: string) {
     super()
     this.uuid = uuid
+    console.log('[BLE 垫片] 创建 Characteristic:', uuid)
   }
 
   get notifying(): boolean {
@@ -52,6 +53,7 @@ class BleCharacteristic extends EventTarget {
   }
 
   async startNotifications(): Promise<BleCharacteristic> {
+    console.log('[BLE 垫片] startNotifications 被调用, UUID:', this.uuid)
     if (this._notifying) return this
 
     // 注册 Tauri 事件监听
@@ -64,6 +66,7 @@ class BleCharacteristic extends EventTarget {
 
     // 通知 Rust 开启 Notify
     await invoke('ble_subscribe')
+    console.log('[BLE 垫片] ✅ 通知订阅成功')
     this._notifying = true
     return this
   }
@@ -78,8 +81,10 @@ class BleCharacteristic extends EventTarget {
   }
 
   async writeValue(value: BufferSource): Promise<void> {
+    console.log('[BLE 垫片] writeValue 被调用, UUID:', this.uuid)
     const data = bufferSourceToBytes(value)
     await invoke('ble_write', { data })
+    console.log('[BLE 垫片] ✅ 写入成功, 字节数:', data.length)
   }
 
   async writeValueWithResponse(value: BufferSource): Promise<void> {
@@ -97,9 +102,11 @@ class BleService {
 
   constructor(uuid: string) {
     this.uuid = uuid
+    console.log('[BLE 垫片] 创建 Service:', uuid)
   }
 
   async getCharacteristic(uuid: string): Promise<BleCharacteristic> {
+    console.log('[BLE 垫片] getCharacteristic 被调用:', uuid)
     const normalizedUuid = uuid.toLowerCase()
 
     if (!this._characteristics.has(normalizedUuid)) {
@@ -119,17 +126,21 @@ class BleGATTServer {
   }
 
   async connect(): Promise<BleGATTServer> {
+    console.log('[BLE 垫片] GATT connect 被调用, device ID:', this._device.id)
     await invoke('ble_connect', { deviceId: this._device.id })
     this.connected = true
+    console.log('[BLE 垫片] ✅ GATT 连接成功')
     return this
   }
 
   disconnect(): void {
+    console.log('[BLE 垫片] GATT disconnect 被调用')
     this.connected = false
     invoke('ble_disconnect').catch(() => {})
   }
 
   async getPrimaryService(uuid: string): Promise<BleService> {
+    console.log('[BLE 垫片] getPrimaryService 被调用:', uuid)
     const normalizedUuid = uuid.toLowerCase()
 
     if (!this._services.has(normalizedUuid)) {
@@ -212,6 +223,7 @@ BleCharacteristic.prototype.startNotifications = async function (): Promise<BleC
 }
 
 async function autoDiscover(charUuid: string): Promise<void> {
+  console.log('[BLE 垫片] autoDiscover 被触发, charUuid:', charUuid)
   // 收集已知的所有 UUID（从 Service 和 Characteristic 层收集）
   // SDK 通常使用同一个 service UUID，write 和 notify 是不同的 characteristic UUID
   // 由于我们无法预知 UUID，需要在第一次操作时收集
@@ -245,11 +257,13 @@ async function autoDiscover(charUuid: string): Promise<void> {
   _writeUuid = _capturedUuids.length >= 1 ? _capturedUuids[0]! : charUuid
   _notifyUuid = _capturedUuids.length >= 2 ? _capturedUuids[1]! : charUuid
 
+  console.log('[BLE 垫片] 调用 ble_discover:', { _serviceUuid, _writeUuid, _notifyUuid })
   await invoke('ble_discover', {
     serviceUuid: _serviceUuid,
     writeUuid: _writeUuid,
     notifyUuid: _notifyUuid,
   })
+  console.log('[BLE 垫片] ✅ ble_discover 完成')
 
   _discovered = true
 }
@@ -261,12 +275,14 @@ const _capturedUuids: string[] = []
 
 const originalGetPrimaryService = BleGATTServer.prototype.getPrimaryService
 BleGATTServer.prototype.getPrimaryService = async function (uuid: string): Promise<BleService> {
+  console.log('[BLE 垫片] UUID 捕获 - Service:', uuid)
   _capturedServiceUuid = uuid
   return originalGetPrimaryService.call(this, uuid)
 }
 
 const originalGetCharacteristic = BleService.prototype.getCharacteristic
 BleService.prototype.getCharacteristic = async function (uuid: string): Promise<BleCharacteristic> {
+  console.log('[BLE 垫片] UUID 捕获 - Characteristic:', uuid)
   const normalized = uuid.toLowerCase()
   if (!_capturedUuids.includes(normalized)) {
     _capturedUuids.push(normalized)

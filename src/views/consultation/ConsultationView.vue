@@ -324,6 +324,10 @@ const skipDoctorSay = () => {
 
 /** → 右键：跳过 TTS / 跳过问题 / 取消语音 */
 const handleArrowRight = async () => {
+  // 采集引导步骤 → 右键无响应（不能跳过采集引导语）
+  const currentFlowStep = FLOW_STEPS[currentStepId.value]
+  if (currentFlowStep?.captureType) return
+
   // 1. TTS 正在播报 → 停止语音 + 文字全显
   if (isTyping.value || ttsStore.isSpeaking) {
     skipDoctorSay()
