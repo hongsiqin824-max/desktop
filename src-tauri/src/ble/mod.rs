@@ -52,11 +52,27 @@ static BLE: std::sync::LazyLock<Arc<Mutex<BleState>>> =
 // ── Tauri Commands ────────────────────────────────────────────
 
 /// 扫描附近的 BLE 设备，返回名称以 "MZY" 开头的设备列表
+/// 复用已有 adapter 并在扫描前断开残留连接，防止设备因保持连接而不广播
 #[tauri::command]
 pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
-    let manager = Manager::new().await.map_err(|e| format!("创建 BLE 管理器失败: {e}"))?;
-    let adapters = manager.adapters().await.map_err(|e| format!("获取适配器失败: {e}"))?;
-    let adapter = adapters.into_iter().next().ok_or("未找到 BLE 适配器，请确认蓝牙已开启")?;
+    let mut state = BLE.lock().await;
+
+    // ① 如果有残留连接，先断开（BLE 设备在已连接时不广播，必须先断开）
+    if let Some(peripheral) = state.peripheral.take() {
+        let _ = peripheral.disconnect().await;
+    }
+    state.write_char = None;
+    state.notify_char = None;
+
+    // ② 复用已有 adapter（保持 peripheral 引用有效），没有才新建
+    let adapter = match state.adapter.take() {
+        Some(a) => a,
+        None => {
+            let manager = Manager::new().await.map_err(|e| format!("创建 BLE 管理器失败: {e}"))?;
+            let adapters = manager.adapters().await.map_err(|e| format!("获取适配器失败: {e}"))?;
+            adapters.into_iter().next().ok_or("未找到 BLE 适配器，请确认蓝牙已开启")?
+        }
+    };
 
     // 开始扫描（无过滤条件）
     adapter
@@ -87,7 +103,6 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
     }
 
     // 保存 adapter 引用供后续连接使用
-    let mut state = BLE.lock().await;
     state.adapter = Some(adapter);
 
     Ok(devices)
