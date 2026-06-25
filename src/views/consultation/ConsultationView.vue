@@ -457,8 +457,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
   // LLM 处理中不响应
   if (llmIsLoading.value) return
 
-  // 自动过渡步骤不响应
-  if (isAutoTransition.value) return
+  // 自动过渡步骤中，只允许 → 跳过 TTS，阻止 ↑↓
+  if (isAutoTransition.value && e.key !== 'ArrowRight') return
 
   switch (e.key) {
     case 'ArrowRight':
