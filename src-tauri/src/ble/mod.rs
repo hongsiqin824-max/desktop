@@ -85,17 +85,23 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
         .await
         .map_err(|e| format!("扫描启动失败: {e}"))?;
 
-    // 等待 3 秒收集设备
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    // 等待 5 秒收集设备（从 3 秒增加到 5 秒，给设备更多广播时间）
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     let peripherals = adapter
         .peripherals()
         .await
         .map_err(|e| format!("获取设备列表失败: {e}"))?;
 
+    // 诊断日志：显示所有扫描到的设备
+    println!("[ble_scan] 扫描完成，总共找到 {} 个 BLE 设备", peripherals.len());
+
     let mut devices = Vec::new();
     for p in &peripherals {
         if let Ok(Some(props)) = p.properties().await {
+            let name_str = props.local_name.as_deref().unwrap_or("(无名)");
+            println!("[ble_scan]   - 设备: {}, ID: {}", name_str, p.id());
+
             if let Some(ref name) = props.local_name {
                 if name.starts_with("MZY") {
                     devices.push(BleDevice {
@@ -107,7 +113,7 @@ pub async fn ble_scan() -> Result<Vec<BleDevice>, String> {
         }
     }
 
-    println!("[ble_scan] 扫描完成，找到 {} 个 MZY 设备", devices.len());
+    println!("[ble_scan] 其中 MZY 设备: {} 个", devices.len());
 
     // 保存 adapter 引用供后续连接使用
     state.adapter = Some(adapter);
