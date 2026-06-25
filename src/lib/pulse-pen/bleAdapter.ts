@@ -158,8 +158,15 @@ const bluetoothAdapter = {
   async requestDevice(
     options?: { filters?: { namePrefix?: string }[]; optionalServices?: string[]; acceptAllDevices?: boolean }
   ): Promise<BleDevice> {
-    // 调用 Rust 扫描
-    const devices = await invoke<{ id: string; name: string | null }[]>('ble_scan')
+    // 调用 Rust 扫描，支持重试机制
+    let devices = await invoke<{ id: string; name: string | null }[]>('ble_scan')
+
+    // 如果第一次扫描未找到设备，等待 1 秒后重试一次
+    if (devices.length === 0) {
+      console.log('[BLE 垫片] 第一次扫描未找到设备，1 秒后重试...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      devices = await invoke<{ id: string; name: string | null }[]>('ble_scan')
+    }
 
     if (devices.length === 0) {
       throw new Error('未找到脉诊笔设备，请确认设备已开机')
