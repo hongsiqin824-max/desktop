@@ -236,22 +236,48 @@ pub async fn ble_subscribe(app: AppHandle) -> Result<(), String> {
         .clone();
     let notify_uuid = char.uuid;
 
+    println!("[ble_subscribe] 开始订阅通知, UUID: {}", notify_uuid);
+
     // 开启通知
     peripheral
         .subscribe(&char)
         .await
-        .map_err(|e| format!("订阅通知失败: {e}"))?;
+        .map_err(|e| {
+            println!("[ble_subscribe] ❌ 订阅失败: {e}");
+            format!("订阅通知失败: {e}")
+        })?;
+
+    println!("[ble_subscribe] ✅ 订阅成功，获取通知流...");
 
     // 获取通知数据流
-    let mut notifications = peripheral.notifications().await.map_err(|e| format!("获取通知流失败: {e}"))?;
+    let mut notifications = peripheral.notifications().await.map_err(|e| {
+        println!("[ble_subscribe] ❌ 获取通知流失败: {e}");
+        format!("获取通知流失败: {e}")
+    })?;
+
+    println!("[ble_subscribe] ✅ 通知流已获取，启动后台任务");
 
     // 后台任务：持续读取通知数据并推送到前端
+    let notify_uuid_clone = notify_uuid;
     tokio::spawn(async move {
+        println!("[ble_subscribe] 后台任务已启动，等待设备通知...");
+        let mut notification_count = 0u32;
+
         while let Some(notification) = notifications.next().await {
-            if notification.uuid == notify_uuid {
+            if notification.uuid == notify_uuid_clone {
+                notification_count += 1;
+                if notification_count <= 5 || notification_count % 100 == 0 {
+                    println!(
+                        "[ble_subscribe] 收到通知 #{}: {} 字节",
+                        notification_count,
+                        notification.value.len()
+                    );
+                }
                 let _ = app.emit("ble-notify", notification.value);
             }
         }
+
+        println!("[ble_subscribe] 后台任务结束，共收到 {} 条通知", notification_count);
     });
 
     Ok(())
