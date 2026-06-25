@@ -92,6 +92,27 @@ function waitForCollection(
       reject(new Error('采集超时'))
     }, timeoutMs)
 
+    // 实时数据日志（仅开发环境，用于调试姿势/压力问题）
+    let lastLogTime = 0
+    client.onRealtimeData((data) => {
+      if (import.meta.env.DEV) {
+        const now = Date.now()
+        // 每 2 秒记录一次，避免日志刷屏
+        if (now - lastLogTime > 2000) {
+          lastLogTime = now
+          console.log('[脉诊笔] 实时数据:', {
+            stable: data.stable,
+            pressureLevel: data.pressureLevel,
+            pressureType: data.pressureType,
+            position: data.position,
+            deviceStatus: data.deviceStatus,
+            pulseValue: data.pulseValue,
+            staticPressure: data.staticPressure,
+          })
+        }
+      }
+    })
+
     client.onCollectionCompleted((event) => {
       clearTimeout(timer)
       resolve(event)
