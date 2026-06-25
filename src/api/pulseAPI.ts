@@ -207,10 +207,12 @@ async function readPulseFromDevice(
   } finally {
     // 6. 无论采集成功、失败、超时，都断开 BLE 连接
     //    防止设备保持连接状态不广播，导致后续扫描找不到
-    try {
-      await penClient.disconnect()
-    } catch {
-      // 断开失败不影响数据
+    if (penClient) {
+      try {
+        await penClient.disconnect()
+      } catch {
+        // 断开失败不影响数据
+      }
     }
     // 重置 SDK 客户端，下次调用时创建新实例，避免残留内部状态
     penClient = null
