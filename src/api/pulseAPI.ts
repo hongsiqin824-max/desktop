@@ -187,6 +187,20 @@ async function readPulseFromDevice(
     console.log('[脉诊笔] ✅ 已连接:', penClient.getDevice()?.name)
   }
 
+  // 4.5 切换到采脉模式（设备必须在此模式下才能自动开始浮→中→沉采集）
+  try {
+    const collectResult = await penClient.enterCollect()
+    if (collectResult.code !== 0) {
+      console.warn('[脉诊笔] ⚠️ 切换到采脉模式失败:', collectResult.message)
+      // 不抛出错误，继续尝试（有些设备可能自动进入采脉模式）
+    } else if (import.meta.env.DEV) {
+      console.log('[脉诊笔] ✅ 已切换到采脉模式')
+    }
+  } catch (e) {
+    console.warn('[脉诊笔] ⚠️ 切换到采脉模式异常:', e)
+    // 不抛出错误，继续尝试
+  }
+
   // 5. 依次采集三个部位（try/finally 确保无论成功/失败/超时都断开连接）
   const completedEvents: PenCollectionCompletedEvent[] = []
 
