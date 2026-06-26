@@ -20,6 +20,7 @@ import { useConsultationStore } from '@/stores/consultation'
 import { useUserStore } from '@/stores/global/user'
 import { analyzeTongue } from '@/api/tongueAI'
 import { readPulseData, type PulseReadProgress } from '@/api/pulseAPI'
+import type { usePulsePen } from '@/composables/usePulsePen'
 import { fetchTonguePulseQuestions, saveTonguePulseAnswers } from '@/api/tonguePulse'
 import {
   matchTongueQuestions,
@@ -75,6 +76,10 @@ export function useTonguePulseCapture() {
 
   // 脉诊数据
   const pulseData = ref<IPulseAnalysisData | null>(null)
+
+  // 脉诊交互式采集时的暂存数据（舌象分析 + 后端问题，等脉诊完成后匹配）
+  let _pendingAiReport: Awaited<ReturnType<typeof analyzeTongue>> | null = null
+  let _pendingQuestionsData: { tongueQuestions: ITonguePulseQuestion[]; pulseQuestions: ITonguePulseQuestion[] } | null = null
 
   // ── 计算属性 ──────────────────────────────────────────────
   const isProcessing = computed(() =>
@@ -293,10 +298,17 @@ export function useTonguePulseCapture() {
   }
 
   /**
-   * 步骤2: AI 分析舌象 + 脉诊采集 + 获取问题 + 自动匹配
-   * 这是一个自动推进的步骤，不需要用户操作
+   * 步骤2: AI 分析舌象 + 启动脉诊采集 + 预获取后端问题
+   *
+   * Tauri 环境（有脉诊笔）：脉诊采集为非阻塞式，由 composable 管理用户交互
+   *   → 此函数提前返回，脉诊完成后由 finalizeAfterPulse 处理匹配
+   *
+   * 非 Tauri 环境（mock）：脉诊为自动 mock，此函数阻塞直到全部完成
    */
-  async function stepAnalyzeAndMatch(onPulseProgress?: (progress: PulseReadProgress) => void): Promise<void> {
+  async function stepAnalyzeAndMatch(
+    pulsePen?: ReturnType<typeof usePulsePen>,
+    onPulseProgress?: (progress: PulseReadProgress) => void,
+  ): Promise<void> {
     try {
       // 3a. AI 舌象分析（用舌面照片）
       phase.value = 'ai_analyzing'
@@ -314,42 +326,90 @@ export function useTonguePulseCapture() {
       })
       store.setTongueReport(aiReport)
 
-      // 3b. 脉诊采集
-      phase.value = 'pulse_reading'
-      const pulse = await readPulseData(onPulseProgress)
-      pulseData.value = pulse
-      store.setPulseAnalysis(pulse)
-
-      // 3c. 获取后端舌脉问题
+      // 3b. 预获取后端问题（脉诊之前先拿，节省时间）
       phase.value = 'fetching_questions'
       const questionsData = await fetchTonguePulseQuestions(
         store.answerSheetId,
         store.questionModel,
       )
 
-      // 3d. 自动匹配
+      // 3c. 脉诊采集
+      phase.value = 'pulse_reading'
+
+      if (isTauri && pulsePen) {
+        // Tauri 环境：启动交互式脉诊（非阻塞）
+        // 暂存舌象报告和问题数据，等脉诊完成后由 finalizeAfterPulse 匹配
+        _pendingAiReport = aiReport
+        _pendingQuestionsData = questionsData
+        pulsePen.startCollection()
+        return  // ← 提前返回，不阻塞
+      }
+
+      // 非 Tauri 环境：使用 mock 或旧流程
+      const pulse = await readPulseData(onPulseProgress)
+      pulseData.value = pulse
+      store.setPulseAnalysis(pulse)
+      await finalizeAfterPulse(pulse, aiReport, questionsData)
+    } catch (e) {
+      phase.value = 'error'
+      errorMessage.value = e instanceof Error ? e.message : '分析匹配失败'
+      throw e
+    }
+  }
+
+  /**
+   * 脉诊采集完成后调用：执行匹配 + 同步数据 + 进入确认阶段
+   *
+   * Tauri 环境：由 ConsultationView 的 watch(pulsePen.isDone) 触发
+   * 非 Tauri 环境：由 stepAnalyzeAndMatch 内部调用
+   */
+  async function finalizeAfterPulse(
+    pulse?: IPulseAnalysisData,
+    aiReport?: Awaited<ReturnType<typeof analyzeTongue>>,
+    questionsData?: { tongueQuestions: ITonguePulseQuestion[]; pulseQuestions: ITonguePulseQuestion[] },
+  ): Promise<void> {
+    try {
+      // 使用传入的参数或暂存的数据
+      const pulseToUse = pulse ?? pulseData.value
+      if (!pulseToUse) throw new Error('缺少脉诊数据')
+      if (pulse) {
+        pulseData.value = pulse
+        store.setPulseAnalysis(pulse)
+      }
+
+      const aiReportToUse = aiReport ?? _pendingAiReport
+      const questionsDataToUse = questionsData ?? _pendingQuestionsData
+      if (!aiReportToUse || !questionsDataToUse) {
+        throw new Error('缺少暂存的舌象分析或问题数据')
+      }
+
+      // 自动匹配
       phase.value = 'matching'
-      const matchedT = matchTongueQuestions(questionsData.tongueQuestions, aiReport)
-      const matchedP = matchPulseQuestions(questionsData.pulseQuestions, pulse)
+      const matchedT = matchTongueQuestions(questionsDataToUse.tongueQuestions, aiReportToUse)
+      const matchedP = matchPulseQuestions(questionsDataToUse.pulseQuestions, pulseToUse)
 
       matchedTongue.value = matchedT
       matchedPulse.value = matchedP
       store.setMatchedTongueQuestions(matchedT)
       store.setMatchedPulseQuestions(matchedP)
 
-      // 3e. 生成可读结果文本
+      // 生成可读结果文本
       const tongueLines = extractTongueResultText(matchedT)
-      const pulseLines = extractPulseResultText(matchedP, pulse)
+      const pulseLines = extractPulseResultText(matchedP, pulseToUse)
       resultTextLines.value = [...tongueLines, ...pulseLines]
 
-      // 3f. 同步生成 IAnalysisData（必须在展示 analysis_review 之前）
+      // 同步生成 IAnalysisData
       syncAnalysisData()
+
+      // 清理暂存数据
+      _pendingAiReport = null
+      _pendingQuestionsData = null
 
       // 进入确认阶段
       phase.value = 'confirming'
     } catch (e) {
       phase.value = 'error'
-      errorMessage.value = e instanceof Error ? e.message : '分析匹配失败'
+      errorMessage.value = e instanceof Error ? e.message : '匹配失败'
       throw e
     }
   }
@@ -489,6 +549,7 @@ export function useTonguePulseCapture() {
     // 分步调用
     stepTongueTop,
     stepAnalyzeAndMatch,
+    finalizeAfterPulse,
     stepSave,
     resetCapture,
     // 摄像头交互（由 ConsultationView 调用）

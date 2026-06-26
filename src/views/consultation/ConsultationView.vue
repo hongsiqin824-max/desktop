@@ -9,6 +9,7 @@ import { useSpeechRecognition } from '@/composables/useSpeechRecognition'
 import { useTTSStore } from '@/stores/global/tts'
 import type { PersonaType } from '@/types/consultation'
 import { useLLM } from '@/composables/useLLM'
+import { isTauri } from '@/config/proxy'
 import type { IIntentResult } from '@/types/llm'
 import { fetchLLMCompletion } from '@/api/llm'
 import { buildInterpretationMessages, parseInterpretationResult } from '@/data/llmPrompt'
@@ -24,6 +25,7 @@ import type { IDetailQuestionItem, IDetailQuestionOption } from '@/types/consult
 import { useDetailQuestion } from '@/composables/useDetailQuestion'
 import { useSelfFeature } from '@/composables/useSelfFeature'
 import { useTonguePulseCapture } from '@/composables/useTonguePulseCapture'
+import { usePulsePen } from '@/composables/usePulsePen'
 import type { MeridianCodeType } from '@/types/meridian'
 import MeridianBodyView from '@/components/business/meridian/MeridianBodyView.vue'
 import CameraCapture from '@/components/CameraCapture.vue'
@@ -176,6 +178,39 @@ const pulseProgress = ref<PulseReadProgress>({
   percent: 0,
 })
 const pulseOverlayRef = ref<InstanceType<typeof PulseCollectionOverlay> | null>(null)
+
+/** 脉诊笔交互式采集 composable（状态机） */
+const pulsePen = usePulsePen()
+
+// 转发脉搏波形值到 Canvas（绕过 Vue 响应式，只在值变化时推入）
+watch(() => pulsePen.latestPulseValue.value, (v) => {
+  if (v) pulseOverlayRef.value?.pushPulseValue(v)
+})
+
+// 脉诊采集完成 → 执行匹配 + 关闭浮层 + 跳转
+watch(pulsePen.isDone, async (done) => {
+  if (!done || !isCapturing.value) return
+  try {
+    const finalData = pulsePen.getFinalData()
+    await tonguePulseCapture.finalizeAfterPulse(finalData)
+    captureCompleted.value = true
+    await new Promise(r => setTimeout(r, 300))
+    isCapturing.value = false
+    goToStep('pulse_done')
+  } catch (e) {
+    isCapturing.value = false
+    const errorMsg = e instanceof Error ? e.message : '脉诊数据匹配失败'
+    await doctorSay(`${errorMsg}，请稍后重试。`)
+  }
+})
+
+/** 用户取消脉诊采集 → 回退 mock 数据 */
+async function handlePulseCancel(): Promise<void> {
+  await pulsePen.cancel()
+  isCapturing.value = false
+  tonguePulseCapture.resetCapture()
+  await doctorSay('脉诊采集已跳过，将使用模拟数据继续问诊。')
+}
 
 /** 舌面拍照时是否显示摄像头预览 */
 const showTongueCamera = computed(() =>
@@ -535,6 +570,8 @@ const clearTimers = () => {
   ttsStore.stop()
   // 取消 Phase 2 解读 LLM 请求（防止页面离开后回调写入已清空的数据）
   if (interpretationAbortController) { interpretationAbortController.abort(); interpretationAbortController = null }
+  // 取消脉诊笔采集（如果正在进行）
+  pulsePen.cancel()
   isCapturing.value = false
   captureType.value = null
   pulsePhase.value = ''
@@ -1235,27 +1272,22 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
         isCapturing.value = false
         goToStep('pulse_intro')  // 跳过舌底拍照，直接进入脉诊
       } else if (stepId === 'pulse_intro') {
-        // 脉搏采集 + AI分析 + 问题获取 + 自动匹配（全自动）
+        // 脉搏采集（Tauri: 交互式 composable / 非Tauri: mock）
         pulsePhase.value = ''
         pulseMessage.value = ''
-        pulseProgress.value = { phase: 'connecting', message: '', percent: 0 }
-        await tonguePulseCapture.stepAnalyzeAndMatch((progress) => {
-          pulsePhase.value = progress.phase
-          pulseMessage.value = progress.message
-          pulseProgress.value = progress
-          // 波形数据直接推送到 Canvas（绕过 Vue 响应式）
-          if (progress.pulseValue) {
-            pulseOverlayRef.value?.pushPulseValue(progress.pulseValue)
-          }
-        })
-        pulsePhase.value = 'done'
-        pulseMessage.value = ''
-        if (goToStepGeneration.value !== gen) return
-        captureCompleted.value = true
-        await new Promise(r => setTimeout(r, 300))
-        if (goToStepGeneration.value !== gen) return
-        isCapturing.value = false
-        goToStep('pulse_done')
+        // stepAnalyzeAndMatch 在 Tauri 环境非阻塞（脉诊由 composable 管理）
+        // 在非 Tauri 环境阻塞（mock 数据，直接完成）
+        await tonguePulseCapture.stepAnalyzeAndMatch(pulsePen)
+        // Tauri: 此处已返回，脉诊进行中，由 watch(pulsePen.isDone) 处理后续
+        // 非 Tauri: stepAnalyzeAndMatch 内部已调用 finalizeAfterPulse，phase='confirming'
+        if (!isTauri) {
+          captureCompleted.value = true
+          await new Promise(r => setTimeout(r, 300))
+          if (goToStepGeneration.value !== gen) return
+          isCapturing.value = false
+          goToStep('pulse_done')
+        }
+        // Tauri: 不设置 captureCompleted，不走 goToStep，等 watch 触发
       }
     } catch (e) {
       isCapturing.value = false
@@ -2600,21 +2632,24 @@ onUnmounted(() => {
             </button>
             <div class="capture-tip">请自然伸出舌头，面对镜头</div>
           </template>
-          <!-- 脉诊采集：使用增强组件 -->
+          <!-- 脉诊采集：使用增强组件（绑定 usePulsePen composable 状态） -->
           <template v-else-if="captureType === 'pulse'">
             <PulseCollectionOverlay
               ref="pulseOverlayRef"
-              :phase="pulseProgress.phase"
-              :message="pulseProgress.message"
-              :current-position="pulseProgress.currentPosition ?? null"
-              :current-pressure="pulseProgress.currentPressure ?? null"
-              :device-status="pulseProgress.deviceStatus ?? 'unknown'"
-              :pressure-percent="pulseProgress.pressurePercent ?? 0"
-              :overall-percent="pulseProgress.overallPercent ?? 0"
-              :is-completed="captureCompleted"
-              :invalid-reason="pulseProgress.invalidReason ?? null"
-              :pressure-level="pulseProgress.pressureLevel ?? 2"
-              :completed-pressures="pulseProgress.completedPressures ?? { cun: [], guan: [], chi: [] }"
+              :phase="pulsePen.phase.value"
+              :current-position="pulsePen.currentPosition.value"
+              :position-index="pulsePen.positionIndex.value"
+              :positions-done="pulsePen.positionsDone.value"
+              :signal-detected="pulsePen.signalDetected.value"
+              :current-pressure="pulsePen.currentPressure.value"
+              :pressure-level="pulsePen.pressureLevel.value"
+              :pressures-done="pulsePen.pressuresDone.value"
+              :collect-progress="pulsePen.collectProgress.value"
+              :invalid-reason="pulsePen.invalidReason.value"
+              :device-status="pulsePen.deviceStatus.value"
+              :current-analysis="pulsePen.currentAnalysis.value"
+              @confirm="pulsePen.confirmPosition()"
+              @cancel="handlePulseCancel()"
             />
           </template>
           <!-- 舌象采集（非脉诊）：保持原有加载状态 -->
