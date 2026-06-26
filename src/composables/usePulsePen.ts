@@ -154,21 +154,6 @@ export function usePulsePen() {
     searchWarning.value = ''
   }
 
-  function cleanupHandlers(): void {
-    if (!client) return
-    const names = [
-      'realtime-data', 'collection-progress', 'pressure-level',
-      'device-status', 'collection-invalid', 'pressure-completed',
-      'collection-completed', 'error-message', 'disconnected',
-    ]
-    for (const name of names) {
-      // 移除该事件的所有监听器（通过传入空函数不会报错）
-      // 由于 SDK 扩展 EventTarget，我们用命名 handler 清理
-      // 但这里简化处理：在 startCollectTimer 中用命名函数清理
-    }
-    // 注意：实际清理由 startCollectTimer 内部的 cleanup 函数负责
-  }
-
   async function safeDisconnect(): Promise<void> {
     if (client) {
       try { await client.disconnect() } catch { /* ignore */ }
@@ -218,6 +203,10 @@ export function usePulsePen() {
       pressureLevel.value = data.pressureLevel
       deviceStatus.value = DEVICE_STATUS_MAP[data.deviceStatus] ?? 'unknown'
       latestPulseValue.value = data.pulseValue
+      // 寻脉阶段信号检测（不依赖外部调用）
+      if (phase.value === 'searching') {
+        checkSignal(data.pulseValue)
+      }
       if (data.pressureType) {
         currentPressure.value = PRESSURE_MAP[data.pressureType] ?? null
       }
@@ -551,16 +540,6 @@ export function usePulsePen() {
     return convertPulseData(mergedEvent)
   }
 
-  /**
-   * 推入脉搏波形值（供 Canvas 使用，绕过 Vue 响应式）
-   */
-  function pushPulseValue(value: number): void {
-    // 信号检测（寻脉阶段）
-    if (phase.value === 'searching') {
-      checkSignal(value)
-    }
-  }
-
   return {
     // 响应式状态
     phase, currentPosition, positionIndex, positionsDone,
@@ -568,7 +547,7 @@ export function usePulsePen() {
     collectProgress, invalidReason, deviceStatus, currentAnalysis,
     cancelled, isDone, latestPulseValue, searchWarning,
     // 方法
-    startCollection, confirmPosition, cancel, retry, getFinalData, pushPulseValue,
+    startCollection, confirmPosition, cancel, retry, getFinalData,
     // 常量（供 UI 使用）
     POSITION_NAMES, PRESSURE_NAMES, POSITIONS,
   }
