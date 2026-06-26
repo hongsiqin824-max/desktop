@@ -20,7 +20,6 @@ import { isTauri } from '@/config/proxy'
 import type {
   PulseCollectionPenClient,
   PenCollectionCompletedEvent,
-  PenPulsePosition,
   PenRealtimeData,
   PenCollectionProgress,
   PenPressureLevel,
@@ -70,7 +69,6 @@ const SIGNAL_BUFFER_SIZE = 100
 const SEARCH_NO_SIGNAL_WARN_MS = 120_000  // 2 分钟无信号警告
 const SEARCH_IDLE_PROMPT_MS = 30_000      // 30 秒空闲提示
 const INVALID_WAIT_MS = 30_000          // 采集无效后等待 SDK 自动恢复的超时（30 秒）
-const INVALID_MAX_RETRIES = 2           // 不再使用（保留常量避免引用错误）
 
 // ── Composable ────────────────────────────────────────────
 
@@ -113,7 +111,6 @@ export function usePulsePen() {
   let lastSignalCheck = 0
   let rtLogThrottle = 0  // realtime 日志节流时间戳
   let invalidTimer: ReturnType<typeof setTimeout> | null = null
-  let invalidRetryCount = 0
 
   // 持久监听器引用（供断开时移除）
   let persistentRealtimeHandler: ((data: PenRealtimeData) => void) | null = null
@@ -138,7 +135,6 @@ export function usePulsePen() {
     currentAnalysis.value = null
     lastCompletedPressure.value = null
     // 重置 invalid 重试状态
-    invalidRetryCount = 0
     if (invalidTimer) { clearTimeout(invalidTimer); invalidTimer = null }
   }
 
@@ -360,24 +356,32 @@ export function usePulsePen() {
       }
       const doneCount = Object.values(pressuresDone.value).filter(Boolean).length
       // 诊断：打印 record 的真实结构（看 rawAds/oneAds 到底有没有数据）
-      const firstRecord = event.records?.[0]
+      const firstRecord = event.records?.[0] as Record<string, unknown> | undefined
       if (firstRecord) {
         log('📋 record[0] 结构:', {
           keys: Object.keys(firstRecord),
           rawAdsType: typeof firstRecord.rawAds,
           rawAdsIsArray: Array.isArray(firstRecord.rawAds),
-          rawAdsLength: firstRecord.rawAds?.length ?? 'undefined',
-          rawPulseLength: (firstRecord as any).rawPulse?.length ?? 'undefined',
-          oneAdsLength: firstRecord.oneAds?.length ?? 'undefined',
-          motorDataLength: (firstRecord as any).motorData?.length ?? 'undefined',
+          rawAdsLength: Array.isArray(firstRecord.rawAds) ? (firstRecord.rawAds as unknown[]).length : 'undefined',
+          rawPulseLength: Array.isArray(firstRecord.rawPulse) ? (firstRecord.rawPulse as unknown[]).length : 'undefined',
+          oneAdsLength: Array.isArray(firstRecord.oneAds) ? (firstRecord.oneAds as unknown[]).length : 'undefined',
+          motorDataLength: Array.isArray(firstRecord.motorData) ? (firstRecord.motorData as unknown[]).length : 'undefined',
           // 打印所有非数组字段
           scalarFields: Object.fromEntries(
             Object.entries(firstRecord).filter(([, v]) => !Array.isArray(v))
           ),
         })
       }
-      const rawAdsLengths = event.records?.map(r => r.rawAds?.length ?? 0) ?? []
-      const oneAdsLengths = event.records?.map(r => r.oneAds?.length ?? 0) ?? []
+      const rawAdsLengths = event.records?.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rec = r as any
+        return Array.isArray(rec.rawAds) ? rec.rawAds.length : 0
+      }) ?? []
+      const oneAdsLengths = event.records?.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rec = r as any
+        return Array.isArray(rec.oneAds) ? rec.oneAds.length : 0
+      }) ?? []
       log(`✅ 压力档完成: ${pres ? PRESSURE_NAMES[pres] : '?'}`, {
         pressureType: event.pressureType,
         records: event.records?.length ?? '?',
@@ -399,13 +403,13 @@ export function usePulsePen() {
         invalidTimer = null
         log('✅ invalid 等待取消：onCollectionCompleted 延迟触发，数据完整')
       }
-      invalidRetryCount = 0
 
       const pos = currentPosition.value!
       const rawStats = getRawNotifyStats()
 
       // 🔍 诊断：检查 SDK client 内部属性（寻找 rawAds 真实数据）
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const clientAny = client as any
         const proto = Object.getPrototypeOf(clientAny)
         const protoKeys = proto ? Object.getOwnPropertyNames(proto).filter(k => k !== 'constructor') : []
@@ -564,8 +568,10 @@ export function usePulsePen() {
         log('📱 ✅ 已在 prototype 上覆盖 getStableFrameCount → 200')
       }
       // 同时在实例上覆盖（双重保障）
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(client as any).getStableFrameCount = function () { return 200 }
       log('📱 ✅ 已在 instance 上覆盖 getStableFrameCount → 200')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       log('📱 验证:', (client as any).getStableFrameCount())
 
       log('📱 请求设备（namePrefix: MZY）...')
