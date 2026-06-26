@@ -15,6 +15,13 @@ import type {
   PenCollectionCompletedEvent,
   PenPulsePosition,
   PenCommandResult,
+  PenRealtimeData,
+  PenCollectionProgress,
+  PenPressureLevel,
+  PenDeviceWorkStatus,
+  PenCollectionInvalidEvent,
+  PenPressureCompletedEvent,
+  PenErrorEvent,
 } from '@/lib/pulse-pen'
 import { convertPulseData } from '@/lib/pulse-pen/convertPulseData'
 
@@ -35,10 +42,34 @@ export function pulseConfidenceToCode(confidence: number): 0 | 1 {
 
 export type PulseReadPhase = 'connecting' | 'collecting_cun' | 'collecting_guan' | 'collecting_chi' | 'done'
 
+/** 设备工作状态（对应 SDK PenDeviceWorkStatus: 1=待机 2=寻脉 3=采脉） */
+export type DeviceWorkStatus = 'standby' | 'search' | 'collect' | 'unknown'
+
 export interface PulseReadProgress {
   phase: PulseReadPhase
   message: string
   percent: number
+  // ── 新增字段（全部可选，向后兼容）──
+  /** 当前采集部位 */
+  currentPosition?: 'cun' | 'guan' | 'chi'
+  /** 当前压力档（浮/中/沉） */
+  currentPressure?: 'float' | 'middle' | 'deep'
+  /** 设备工作状态 */
+  deviceStatus?: DeviceWorkStatus
+  /** 单压力档采集进度 0-100 */
+  pressurePercent?: number
+  /** 总体进度 0-100（3 部位 × 3 压力档） */
+  overallPercent?: number
+  /** 实时脉搏波形值（用于 Canvas 绘制） */
+  pulseValue?: number
+  /** 压力等级指示（0=过小 1=浮 2=中 3=沉 4=过大） */
+  pressureLevel?: number
+  /** 采集无效原因（null 表示正常） */
+  invalidReason?: string
+  /** 刚完成的压力档信息 */
+  pressureCompleted?: { position: string; pressure: string }
+  /** 各部位已完成的压力档 */
+  completedPressures?: Record<string, string[]>
 }
 
 export type PulseReadProgressCallback = (progress: PulseReadProgress) => void
@@ -53,6 +84,20 @@ const COLLECTION_POSITIONS: { position: PenPulsePosition; phase: PulseReadPhase;
 
 /** 单个部位采集超时（毫秒） */
 const POSITION_TIMEOUT_MS = 60_000
+
+// ── SDK 值 → 应用层标签映射 ──────────────────────────────────
+
+/** SDK pressureType(1/3/5) → 应用层标签 */
+const PRESSURE_MAP: Record<number, string> = { 1: 'float', 3: 'middle', 5: 'deep' }
+
+/** SDK deviceStatus(1/2/3) → 应用层标签 */
+const DEVICE_STATUS_MAP: Record<number, DeviceWorkStatus> = { 1: 'standby', 2: 'search', 3: 'collect' }
+
+/** 部位英文 → 中文 */
+const POSITION_NAMES: Record<string, string> = { cun: '寸', guan: '关', chi: '尺' }
+
+/** 压力档英文 → 中文 */
+const PRESSURE_NAMES: Record<string, string> = { float: '浮', middle: '中', deep: '沉' }
 
 // ── Mock 脉诊数据 ─────────────────────────────────────────────
 
@@ -82,22 +127,58 @@ async function loadPenSDK(): Promise<typeof import('@/lib/pulse-pen')> {
   return import('@/lib/pulse-pen/index.js')
 }
 
-/** 等待单个部位的 collection-completed 事件 */
+/** 采集上下文（跨 3 个部位共享已完成状态） */
+interface CollectionContext {
+  position: PenPulsePosition
+  phase: PulseReadPhase
+  positionIndex: number  // 0, 1, 2
+  completedPressures: Record<string, string[]>
+}
+
+/** 采集世代计数器（防止旧事件处理器污染新采集） */
+let collectionGeneration = 0
+
+/** 等待单个部位的 collection-completed 事件，同时转发丰富进度 */
 function waitForCollection(
   client: PulseCollectionPenClient,
   timeoutMs: number,
+  context: CollectionContext,
+  onProgress?: PulseReadProgressCallback,
 ): Promise<PenCollectionCompletedEvent> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error('采集超时'))
-    }, timeoutMs)
+    const gen = ++collectionGeneration
 
-    // 实时数据日志（仅开发环境，用于调试姿势/压力问题）
+    function isCurrent(): boolean { return gen === collectionGeneration }
+
+    /** 构造进度对象（共享字段 + 事件特有字段） */
+    function baseProgress(): PulseReadProgress {
+      const posName = POSITION_NAMES[context.position] ?? context.position
+      const doneCount = Object.values(context.completedPressures).reduce((s, arr) => s + arr.length, 0)
+      return {
+        phase: context.phase,
+        message: `正在采集${posName}部…`,
+        percent: Math.round((doneCount / 9) * 100),
+        currentPosition: context.position,
+        currentPressure: undefined,
+        deviceStatus: undefined,
+        pressurePercent: 0,
+        overallPercent: Math.round((doneCount / 9) * 100),
+        pressureLevel: 2,
+        invalidReason: undefined,
+        pressureCompleted: undefined,
+        completedPressures: { ...context.completedPressures },
+      }
+    }
+
+    // ── 命名事件处理器（用于 cleanup）──
+
     let lastLogTime = 0
-    client.onRealtimeData((data) => {
+
+    function handleRealtimeData(data: PenRealtimeData): void {
+      if (!isCurrent()) return
+      // 开发环境日志（节流）
       if (import.meta.env.DEV) {
         const now = Date.now()
-        // 每 2 秒记录一次，避免日志刷屏
         if (now - lastLogTime > 2000) {
           lastLogTime = now
           console.log('[脉诊笔] 实时数据:', {
@@ -107,28 +188,121 @@ function waitForCollection(
             position: data.position,
             deviceStatus: data.deviceStatus,
             pulseValue: data.pulseValue,
-            staticPressure: data.staticPressure,
           })
         }
       }
-    })
+      const p = baseProgress()
+      p.pulseValue = data.pulseValue
+      p.pressureLevel = data.pressureLevel
+      p.deviceStatus = DEVICE_STATUS_MAP[data.deviceStatus] ?? 'unknown'
+      if (data.pressureType) {
+        p.currentPressure = (PRESSURE_MAP[data.pressureType] ?? undefined) as 'float' | 'middle' | 'deep' | undefined
+      }
+      onProgress?.(p)
+    }
 
-    client.onCollectionCompleted((event) => {
-      clearTimeout(timer)
-      resolve(event)
-    })
+    function handleCollectionProgress(event: PenCollectionProgress): void {
+      if (!isCurrent()) return
+      const pressureLabel = PRESSURE_MAP[event.pressureType] as 'float' | 'middle' | 'deep' | undefined
+      const posName = POSITION_NAMES[context.position] ?? context.position
+      const presName = pressureLabel ? PRESSURE_NAMES[pressureLabel] ?? '' : ''
+      const p = baseProgress()
+      p.currentPressure = pressureLabel
+      p.pressurePercent = event.percent
+      // 总体进度：已完成数 + 当前压力档进度
+      const doneCount = Object.values(context.completedPressures).reduce((s, arr) => s + arr.length, 0)
+      p.overallPercent = Math.round(((doneCount + event.percent / 100) / 9) * 100)
+      p.message = `${posName}部 ${presName}脉采集中 ${Math.round(event.percent)}%`
+      onProgress?.(p)
+    }
 
-    client.onCollectionInvalid((event) => {
-      // 采集无效但不终止流程，SDK 会自动重试下一个压力档
+    function handlePressureLevel(level: PenPressureLevel): void {
+      if (!isCurrent()) return
+      const p = baseProgress()
+      p.pressureLevel = level
+      onProgress?.(p)
+    }
+
+    function handleDeviceStatus(status: PenDeviceWorkStatus): void {
+      if (!isCurrent()) return
+      const p = baseProgress()
+      p.deviceStatus = DEVICE_STATUS_MAP[status] ?? 'unknown'
+      onProgress?.(p)
+    }
+
+    function handleCollectionInvalid(event: PenCollectionInvalidEvent): void {
+      if (!isCurrent()) return
       if (import.meta.env.DEV) {
         console.log(`[脉诊笔] 采集无效(${event.reason})，等待SDK自动重试...`)
       }
-    })
+      const p = baseProgress()
+      p.invalidReason = event.reason
+      p.message = `采集无效：${event.reason}，正在重试…`
+      onProgress?.(p)
+    }
 
-    client.onError((error) => {
+    function handlePressureCompleted(event: PenPressureCompletedEvent): void {
+      if (!isCurrent()) return
+      const pos = event.position ?? context.position
+      const pres = PRESSURE_MAP[event.pressureType]
+      // 记录已完成
+      if (pres) {
+        if (!context.completedPressures[pos]) context.completedPressures[pos] = []
+        if (!context.completedPressures[pos].includes(pres)) {
+          context.completedPressures[pos].push(pres)
+        }
+      }
+      const posName = POSITION_NAMES[pos] ?? pos
+      const presName = pres ? PRESSURE_NAMES[pres] ?? '' : ''
+      const p = baseProgress()
+      p.currentPressure = (pres ?? undefined) as 'float' | 'middle' | 'deep' | undefined
+      p.pressurePercent = 100
+      p.pressureCompleted = { position: pos, pressure: pres ?? '' }
+      const doneCount = Object.values(context.completedPressures).reduce((s, arr) => s + arr.length, 0)
+      p.overallPercent = Math.round((doneCount / 9) * 100)
+      p.message = `${posName}部 ${presName}脉采集完成`
+      onProgress?.(p)
+    }
+
+    function handleCollectionCompleted(event: PenCollectionCompletedEvent): void {
       clearTimeout(timer)
+      cleanup()
+      resolve(event)
+    }
+
+    function handleError(error: PenErrorEvent): void {
+      clearTimeout(timer)
+      cleanup()
       reject(new Error(`设备错误: ${error.message}`))
-    })
+    }
+
+    // ── 注册所有事件处理器 ──
+    client.onRealtimeData(handleRealtimeData)
+    client.onCollectionProgress(handleCollectionProgress)
+    client.onPressureLevel(handlePressureLevel)
+    client.onDeviceStatus(handleDeviceStatus)
+    client.onCollectionInvalid(handleCollectionInvalid)
+    client.onPressureCompleted(handlePressureCompleted)
+    client.onCollectionCompleted(handleCollectionCompleted)
+    client.onError(handleError)
+
+    // ── 清理函数（移除所有处理器，防止跨部位泄漏）──
+    function cleanup(): void {
+      client.removeEventListener('realtime-data', handleRealtimeData as unknown as EventListener)
+      client.removeEventListener('collection-progress', handleCollectionProgress as unknown as EventListener)
+      client.removeEventListener('pressure-level', handlePressureLevel as unknown as EventListener)
+      client.removeEventListener('device-status', handleDeviceStatus as unknown as EventListener)
+      client.removeEventListener('collection-invalid', handleCollectionInvalid as unknown as EventListener)
+      client.removeEventListener('pressure-completed', handlePressureCompleted as unknown as EventListener)
+      client.removeEventListener('collection-completed', handleCollectionCompleted as unknown as EventListener)
+      client.removeEventListener('error-message', handleError as unknown as EventListener)
+    }
+
+    // ── 超时保护（清理 + reject）──
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('采集超时'))
+    }, timeoutMs)
   })
 }
 
@@ -136,6 +310,8 @@ function waitForCollection(
 async function collectOnePosition(
   client: PulseCollectionPenClient,
   position: PenPulsePosition,
+  context: CollectionContext,
+  onProgress?: PulseReadProgressCallback,
 ): Promise<PenCollectionCompletedEvent> {
   // 设置采集部位，设备会自动开始浮→中→沉采集
   const result: PenCommandResult = client.setPulsePosition(position)
@@ -144,7 +320,7 @@ async function collectOnePosition(
   }
 
   // 等待该部位的浮中沉全部完成
-  return waitForCollection(client, POSITION_TIMEOUT_MS)
+  return waitForCollection(client, POSITION_TIMEOUT_MS, context, onProgress)
 }
 
 /**
@@ -225,14 +401,29 @@ async function readPulseFromDevice(
   // 5. 依次采集三个部位（try/finally 确保无论成功/失败/超时都断开连接）
   const completedEvents: PenCollectionCompletedEvent[] = []
 
+  // 已完成压力档跟踪（跨 3 个部位共享，用于进度计算）
+  const completedPressures: Record<string, string[]> = { cun: [], guan: [], chi: [] }
+
   try {
     for (let i = 0; i < COLLECTION_POSITIONS.length; i++) {
       const { position, phase, label } = COLLECTION_POSITIONS[i]!
       const percent = Math.round(((i + 1) / COLLECTION_POSITIONS.length) * 100)
 
-      onProgress?.({ phase, message: `正在采集${label}部…`, percent })
+      onProgress?.({
+        phase, message: `正在采集${label}部…`, percent,
+        currentPosition: position,
+        overallPercent: Math.round((i / 3) * 100),
+        completedPressures: { ...completedPressures },
+      })
 
-      const event = await collectOnePosition(penClient, position)
+      const context: CollectionContext = {
+        position,
+        phase,
+        positionIndex: i,
+        completedPressures,
+      }
+
+      const event = await collectOnePosition(penClient, position, context, onProgress)
       completedEvents.push(event)
 
       if (import.meta.env.DEV) {

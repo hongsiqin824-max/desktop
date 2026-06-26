@@ -27,6 +27,8 @@ import { useTonguePulseCapture } from '@/composables/useTonguePulseCapture'
 import type { MeridianCodeType } from '@/types/meridian'
 import MeridianBodyView from '@/components/business/meridian/MeridianBodyView.vue'
 import CameraCapture from '@/components/CameraCapture.vue'
+import PulseCollectionOverlay from '@/components/PulseCollectionOverlay.vue'
+import type { PulseReadProgress } from '@/api/pulseAPI'
 
 import './styles/ConsultationView.css'
 
@@ -166,6 +168,14 @@ const analysisData = ref<typeof MOCK_ANALYSIS[string] | null>(null)
 /** 脉诊笔 BLE 采集进度信息（connecting → collecting_cun/guan/chi → done） */
 const pulsePhase = ref('')
 const pulseMessage = ref('')
+
+/** 脉诊采集丰富进度（含部位、压力、波形等） */
+const pulseProgress = ref<PulseReadProgress>({
+  phase: 'connecting',
+  message: '',
+  percent: 0,
+})
+const pulseOverlayRef = ref<InstanceType<typeof PulseCollectionOverlay> | null>(null)
 
 /** 舌面拍照时是否显示摄像头预览 */
 const showTongueCamera = computed(() =>
@@ -529,6 +539,7 @@ const clearTimers = () => {
   captureType.value = null
   pulsePhase.value = ''
   pulseMessage.value = ''
+  pulseProgress.value = { phase: 'connecting', message: '', percent: 0 }
   captureProgress.value = 0
   captureCompleted.value = false
 }
@@ -1227,9 +1238,15 @@ const goToStep = async (stepId: StepIdType, symptom?: string) => {
         // 脉搏采集 + AI分析 + 问题获取 + 自动匹配（全自动）
         pulsePhase.value = ''
         pulseMessage.value = ''
+        pulseProgress.value = { phase: 'connecting', message: '', percent: 0 }
         await tonguePulseCapture.stepAnalyzeAndMatch((progress) => {
           pulsePhase.value = progress.phase
           pulseMessage.value = progress.message
+          pulseProgress.value = progress
+          // 波形数据直接推送到 Canvas（绕过 Vue 响应式）
+          if (progress.pulseValue) {
+            pulseOverlayRef.value?.pushPulseValue(progress.pulseValue)
+          }
         })
         pulsePhase.value = 'done'
         pulseMessage.value = ''
@@ -2583,25 +2600,36 @@ onUnmounted(() => {
             </button>
             <div class="capture-tip">请自然伸出舌头，面对镜头</div>
           </template>
-          <!-- 其他采集类型（脉诊等）：原有加载状态 -->
+          <!-- 脉诊采集：使用增强组件 -->
+          <template v-else-if="captureType === 'pulse'">
+            <PulseCollectionOverlay
+              ref="pulseOverlayRef"
+              :phase="pulseProgress.phase"
+              :message="pulseProgress.message"
+              :current-position="pulseProgress.currentPosition ?? null"
+              :current-pressure="pulseProgress.currentPressure ?? null"
+              :device-status="pulseProgress.deviceStatus ?? 'unknown'"
+              :pressure-percent="pulseProgress.pressurePercent ?? 0"
+              :overall-percent="pulseProgress.overallPercent ?? 0"
+              :is-completed="captureCompleted"
+              :invalid-reason="pulseProgress.invalidReason ?? null"
+              :pressure-level="pulseProgress.pressureLevel ?? 2"
+              :completed-pressures="pulseProgress.completedPressures ?? { cun: [], guan: [], chi: [] }"
+            />
+          </template>
+          <!-- 舌象采集（非脉诊）：保持原有加载状态 -->
           <template v-else>
             <div class="capture-icon">
               <span v-if="captureType === 'tongue_top'">📷</span>
               <span v-else-if="captureType === 'tongue_bottom'">📷</span>
-              <span v-else-if="captureType === 'pulse'">🫀</span>
             </div>
-            <div class="capture-title">
-              {{ captureType === 'pulse' ? '脉诊采集中' : '正在拍摄舌象…' }}
-            </div>
+            <div class="capture-title">正在拍摄舌象…</div>
             <div class="capture-loading">
               <span class="capture-spinner"></span>
-              <!-- 脉诊笔 BLE 采集：显示详细进度 -->
-              <span v-if="captureType === 'pulse' && pulseMessage">{{ pulseMessage }}</span>
-              <span v-else-if="captureType === 'pulse' && !pulsePhase">正在分析舌象…</span>
-              <span v-else>处理中，请稍候…</span>
+              <span>处理中，请稍候…</span>
             </div>
             <div class="capture-tip">
-              {{ captureType === 'tongue_top' ? '请自然伸出舌头，面对镜头' : captureType === 'tongue_bottom' ? '请将舌头卷起，露出舌下脉络' : pulsePhase === 'connecting' ? '请在弹出的蓝牙窗口中选择脉诊笔设备' : '请保持手腕稳定，不要移动' }}
+              {{ captureType === 'tongue_top' ? '请自然伸出舌头，面对镜头' : '请将舌头卷起，露出舌下脉络' }}
             </div>
           </template>
         </template>

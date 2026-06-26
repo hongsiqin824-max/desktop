@@ -945,3 +945,231 @@
   font-size: 30px;
   color: var(--syndrome-content-text);
 }
+
+/* ── 脉诊采集增强组件 ────────────────────────────────────── */
+
+.pulse-overlay {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.pulse-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pulse-icon {
+  font-size: 56px;
+}
+
+.pulse-title {
+  font-size: 38px;
+  font-weight: bold;
+  color: var(--capture-title-text);
+}
+
+.pulse-device-badge {
+  padding: 4px 18px;
+  border-radius: 20px;
+  font-size: 22px;
+  background: var(--color-beige-100, #f5f0eb);
+  color: var(--color-brown-600, #6b5540);
+  transition: all 0.3s ease;
+}
+
+.pulse-device-badge.status-collect {
+  background: var(--pulse-position-active);
+  color: white;
+}
+
+.pulse-device-badge.status-search {
+  background: var(--color-beige-400, #d4c4b0);
+  color: var(--color-brown-700, #4a3728);
+}
+
+/* 部位追踪：寸 → 关 → 尺 */
+.pulse-position-tracker {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  padding: 8px 0;
+}
+
+.pulse-position-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+  min-width: 120px;
+}
+
+.position-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.pulse-position-step.is-pending .position-circle {
+  background: var(--pulse-position-pending);
+  color: var(--color-brown-400, #a08970);
+}
+
+.pulse-position-step.is-active .position-circle {
+  background: var(--pulse-position-active);
+  box-shadow: 0 0 0 4px rgba(140, 106, 74, 0.25);
+  animation: positionPulse 1.5s ease-in-out infinite;
+}
+
+.pulse-position-step.is-done .position-circle {
+  background: var(--pulse-position-done);
+}
+
+@keyframes positionPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(140, 106, 74, 0.25); }
+  50% { box-shadow: 0 0 0 8px rgba(140, 106, 74, 0.1); }
+}
+
+.position-name {
+  font-size: 22px;
+  color: var(--capture-tip-text);
+}
+
+.pulse-position-line {
+  position: absolute;
+  top: 36px;
+  left: 60px;
+  right: 60px;
+  height: 3px;
+  background: var(--pulse-position-pending);
+  z-index: 0;
+}
+
+/* 压力指示：浮 / 中 / 沉 */
+.pulse-pressure-indicators {
+  display: flex;
+  gap: 16px;
+}
+
+.pulse-pressure-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 24px;
+  border-radius: 14px;
+  background: var(--pulse-position-pending);
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.pulse-pressure-item.is-active {
+  background: var(--pulse-position-active);
+}
+
+.pulse-pressure-item.is-active .pressure-label,
+.pulse-pressure-item.is-active .pressure-status {
+  color: white;
+}
+
+.pulse-pressure-item.is-done {
+  background: var(--pulse-position-done);
+}
+
+.pulse-pressure-item.is-done .pressure-label,
+.pulse-pressure-item.is-done .pressure-status {
+  color: white;
+}
+
+.pressure-label {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--color-brown-600, #6b5540);
+}
+
+.pressure-status {
+  font-size: 20px;
+  color: var(--color-brown-400, #a08970);
+}
+
+/* 波形图 */
+.pulse-waveform-container {
+  width: 100%;
+  position: relative;
+}
+
+.pulse-waveform-canvas {
+  width: 100%;
+  height: 100px;
+  border-radius: 12px;
+  background: var(--pulse-waveform-bg);
+  border: 1px solid var(--capture-progress-bg);
+}
+
+.waveform-label {
+  position: absolute;
+  top: 6px;
+  left: 14px;
+  font-size: 18px;
+  color: var(--color-brown-400, #a08970);
+  pointer-events: none;
+}
+
+/* 进度条（复用 capture-progress-bar） */
+.pulse-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.pulse-progress-row .capture-progress-bar {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.pulse-progress-text {
+  font-size: 26px;
+  color: var(--capture-title-text);
+  font-weight: bold;
+  min-width: 50px;
+  text-align: right;
+}
+
+/* 状态消息 */
+.pulse-message {
+  font-size: 28px;
+  color: var(--capture-tip-text);
+  text-align: center;
+  min-height: 36px;
+}
+
+/* 采集无效提示 */
+.pulse-invalid-toast {
+  padding: 10px 24px;
+  border-radius: 14px;
+  background: var(--pulse-invalid-bg);
+  color: var(--pulse-invalid-text);
+  font-size: 24px;
+}
+
+/* 操作指导 */
+.pulse-tip {
+  font-size: 26px;
+  color: var(--capture-tip-text);
+  text-align: center;
+  line-height: 1.6;
+  max-width: 600px;
+}

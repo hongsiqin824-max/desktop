@@ -123,6 +123,14 @@
   --capture-success-bg-light: var(--color-green-400);
   --capture-success-text: var(--theme-success);
 
+  /* 脉诊采集增强组件 */
+  --pulse-position-active: var(--theme-primary);
+  --pulse-position-done: var(--theme-success);
+  --pulse-position-pending: var(--color-beige-300);
+  --pulse-waveform-bg: rgba(250, 248, 245, 0.5);
+  --pulse-invalid-bg: rgba(220, 38, 38, 0.1);
+  --pulse-invalid-text: #dc2626;
+
   /* 分析气泡 */
   --analysis-bg: var(--theme-bg);
   --analysis-border: var(--color-beige-300);
