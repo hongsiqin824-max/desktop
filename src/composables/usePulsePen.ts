@@ -57,6 +57,8 @@ const PRESSURE_NAMES: Record<PressureKey, string> = { float: '浮', middle: '中
 const DEVICE_STATUS_MAP: Record<number, string> = { 1: 'standby', 2: 'search', 3: 'collect' }
 const COLLECTION_TIMEOUT_MS = 60_000
 const SIGNAL_BUFFER_SIZE = 100
+const SEARCH_NO_SIGNAL_WARN_MS = 120_000  // 2 分钟无信号警告
+const SEARCH_IDLE_PROMPT_MS = 30_000      // 30 秒空闲提示
 
 // ── Composable ────────────────────────────────────────────
 
@@ -87,9 +89,14 @@ export function usePulsePen() {
   // 最新脉搏值（供外部转发给 Canvas 波形图）
   const latestPulseValue = ref(0)
 
+  // 寻脉阶段提示
+  const searchWarning = ref('')  // 2分钟无信号 / 30秒空闲 的提示文字
+
   // ── 内部状态（非响应式）──
   let client: PulseCollectionPenClient | null = null
   let collectTimer: ReturnType<typeof setTimeout> | null = null
+  let searchNoSignalTimer: ReturnType<typeof setTimeout> | null = null
+  let searchIdleTimer: ReturnType<typeof setTimeout> | null = null
   let collectGen = 0  // 防止旧 handler 干扰
   let signalBuffer: number[] = []
   let lastSignalCheck = 0
@@ -121,6 +128,30 @@ export function usePulsePen() {
 
   function stopCollectTimer(): void {
     if (collectTimer) { clearTimeout(collectTimer); collectTimer = null }
+  }
+
+  /** 启动寻脉阶段的定时器（无信号警告 + 空闲提示） */
+  function startSearchTimers(): void {
+    searchWarning.value = ''
+    // 30 秒空闲提示
+    searchIdleTimer = setTimeout(() => {
+      if (phase.value === 'searching' && !signalDetected.value) {
+        searchWarning.value = 'idle'
+      }
+    }, SEARCH_IDLE_PROMPT_MS)
+    // 2 分钟无信号警告
+    searchNoSignalTimer = setTimeout(() => {
+      if (phase.value === 'searching' && !signalDetected.value) {
+        searchWarning.value = 'no_signal'
+      }
+    }, SEARCH_NO_SIGNAL_WARN_MS)
+  }
+
+  /** 停止寻脉定时器 */
+  function stopSearchTimers(): void {
+    if (searchIdleTimer) { clearTimeout(searchIdleTimer); searchIdleTimer = null }
+    if (searchNoSignalTimer) { clearTimeout(searchNoSignalTimer); searchNoSignalTimer = null }
+    searchWarning.value = ''
   }
 
   function cleanupHandlers(): void {
@@ -164,6 +195,9 @@ export function usePulsePen() {
     // 阈值 50 是基于 SDK 原始值范围的经验值（(raw-1400)/10 变换后）
     if (variance > 50 && !signalDetected.value) {
       signalDetected.value = true
+      // 检测到信号后清除空闲提示
+      if (searchIdleTimer) { clearTimeout(searchIdleTimer); searchIdleTimer = null }
+      searchWarning.value = ''
       if (import.meta.env.DEV) {
         console.log('[usePulsePen] ✅ 检测到稳定脉搏信号, variance:', variance.toFixed(1))
       }
@@ -364,6 +398,7 @@ export function usePulsePen() {
       resetCollectState()
       resetSignalDetection()
       phase.value = 'searching'
+      startSearchTimers()
 
       if (import.meta.env.DEV) {
         console.log('[usePulsePen] ✅ 已连接，进入寻脉模式')
@@ -384,6 +419,7 @@ export function usePulsePen() {
 
     if (phase.value === 'searching') {
       // 寻脉 → 采脉
+      stopSearchTimers()
       try {
         await client.enterCollect()
       } catch { /* 可能已经在采脉模式 */ }
@@ -415,6 +451,7 @@ export function usePulsePen() {
         // 回到寻脉模式
         try { await client.enterSearch() } catch { /* ignore */ }
         phase.value = 'searching'
+        startSearchTimers()
 
         if (import.meta.env.DEV) {
           console.log(`[usePulsePen] 切换到 ${POSITION_NAMES[currentPosition.value]}部寻脉`)
@@ -437,9 +474,27 @@ export function usePulsePen() {
   async function cancel(): Promise<void> {
     cancelled.value = true
     stopCollectTimer()
+    stopSearchTimers()
     collectGen++
     await safeDisconnect()
     phase.value = 'idle'
+  }
+
+  /**
+   * 重试采集（从错误状态恢复到当前部位的寻脉）
+   */
+  async function retry(): Promise<void> {
+    if (!client) {
+      // 客户端已断开，需要重新开始
+      await startCollection()
+      return
+    }
+    stopCollectTimer()
+    resetCollectState()
+    resetSignalDetection()
+    try { await client.enterSearch() } catch { /* ignore */ }
+    phase.value = 'searching'
+    startSearchTimers()
   }
 
   /**
@@ -511,9 +566,9 @@ export function usePulsePen() {
     phase, currentPosition, positionIndex, positionsDone,
     signalDetected, currentPressure, pressureLevel, pressuresDone,
     collectProgress, invalidReason, deviceStatus, currentAnalysis,
-    cancelled, isDone, latestPulseValue,
+    cancelled, isDone, latestPulseValue, searchWarning,
     // 方法
-    startCollection, confirmPosition, cancel, getFinalData, pushPulseValue,
+    startCollection, confirmPosition, cancel, retry, getFinalData, pushPulseValue,
     // 常量（供 UI 使用）
     POSITION_NAMES, PRESSURE_NAMES, POSITIONS,
   }

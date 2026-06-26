@@ -2648,8 +2648,10 @@ onUnmounted(() => {
               :invalid-reason="pulsePen.invalidReason.value"
               :device-status="pulsePen.deviceStatus.value"
               :current-analysis="pulsePen.currentAnalysis.value"
+              :search-warning="pulsePen.searchWarning.value"
               @confirm="pulsePen.confirmPosition()"
               @cancel="handlePulseCancel()"
+              @retry="pulsePen.retry()"
             />
           </template>
           <!-- 舌象采集（非脉诊）：保持原有加载状态 -->

@@ -1257,3 +1257,19 @@
   font-weight: bold;
   color: var(--capture-title-text);
 }
+
+/* 寻脉警告提示 */
+.pulse-search-warning {
+  padding: 10px 24px;
+  border-radius: 14px;
+  font-size: 22px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  text-align: center;
+  max-width: 560px;
+}
+
+.pulse-search-warning--danger {
+  background: var(--pulse-invalid-bg);
+  color: var(--pulse-invalid-text);
+}

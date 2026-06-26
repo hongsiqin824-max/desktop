@@ -49,6 +49,16 @@
         💡 请调整诊脉笔的位置，找到脉搏波形最高的位置
       </div>
 
+      <!-- 寻脉警告（30秒空闲 / 2分钟无信号） -->
+      <Transition name="fade">
+        <div v-if="searchWarning === 'idle'" class="pulse-search-warning">
+          💡 如果波形不明显，请检查笔是否紧贴皮肤，或按设备 M 键确认已进入寻脉状态
+        </div>
+        <div v-else-if="searchWarning === 'no_signal'" class="pulse-search-warning pulse-search-warning--danger">
+          ⚠️ 2 分钟内未检测到脉搏信号，请检查设备佩戴或尝试跳过脉诊
+        </div>
+      </Transition>
+
       <!-- 确认按钮 -->
       <button
         class="pulse-confirm-btn"
@@ -175,8 +185,11 @@
       <div class="capture-icon">⚠️</div>
       <div class="capture-title" style="font-size: 36px;">采集遇到问题</div>
       <div class="pulse-tip">请检查设备连接和佩戴情况</div>
-      <div style="display: flex; gap: 16px;">
-        <button class="pulse-confirm-btn" @click="$emit('cancel')" style="background: #999;">
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
+        <button class="pulse-confirm-btn is-ready" @click="$emit('retry')">
+          🔄 重新采集当前部位
+        </button>
+        <button class="pulse-confirm-btn" @click="$emit('cancel')" style="background: #999; color: white;">
           跳过脉诊，使用模拟数据
         </button>
       </div>
@@ -208,11 +221,13 @@ const props = defineProps<{
     smoothness?: { value: number }
     kValue?: number
   } | null
+  searchWarning: string
 }>()
 
 defineEmits<{
   (e: 'confirm'): void
   (e: 'cancel'): void
+  (e: 'retry'): void
 }>()
 
 // ── 常量 ──────────────────────────────────────────────────
