@@ -202,6 +202,7 @@ let recordingDuration = 0 // 录音时长计数器（秒）
 let durationTimer: number | null = null // 每秒更新定时器
 let recordingTimeoutTimer: number | null = null // 60 秒超时定时器
 let recordingPromise: Promise<string> | null = null // 存储 startAndWait 的 promise
+let recordStartTime = 0 // 录音开始时间戳（用于最短时长检查）
 
 // ── 异常回答关键词 ────────────────────────────────────────────
 const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
@@ -2201,6 +2202,7 @@ const startVoiceRecording = () => {
 
   // 设置录音状态
   isLongPressRecording.value = true
+  recordStartTime = Date.now() // 记录开始时间（用于最短时长检查）
   showVoiceToast.value = true
   showErrorToast.value = false
 
@@ -2243,6 +2245,22 @@ const stopVoiceRecording = async () => {
   if (recordingTimeoutTimer) {
     clearTimeout(recordingTimeoutTimer)
     recordingTimeoutTimer = null
+  }
+
+  // 最短录音时长检查（防止误触空格键）
+  const MIN_RECORD_DURATION = 300 // 最少 300ms
+  const elapsed = Date.now() - recordStartTime
+  if (elapsed < MIN_RECORD_DURATION) {
+    // 重置录音状态
+    isLongPressRecording.value = false
+    showVoiceToast.value = false
+    // 取消语音识别（不调用 stopSpeech，直接丢弃 promise）
+    recordingPromise = null
+    // 显示提示
+    showErrorToast.value = true
+    errorToastText.value = '录音时间太短，请长按空格键'
+    setTimeout(() => { showErrorToast.value = false }, 2000)
+    return
   }
 
   // 重置录音状态
