@@ -100,6 +100,7 @@ export function usePulsePen() {
   let collectGen = 0  // 防止旧 handler 干扰
   let signalBuffer: number[] = []
   let lastSignalCheck = 0
+  let persistentRealtimeHandler: ((data: PenRealtimeData) => void) | null = null
 
   // 每个部位的原始采集事件（用于最终数据转换）
   const completedEvents: Record<PositionKey, PenCollectionCompletedEvent | null> = {
@@ -154,7 +155,19 @@ export function usePulsePen() {
     searchWarning.value = ''
   }
 
+  /** 移除持久 realtime 监听器 */
+  function removePersistentHandler(): void {
+    if (client && persistentRealtimeHandler) {
+      client.removeEventListener(
+        'realtime-data',
+        persistentRealtimeHandler as unknown as EventListener,
+      )
+      persistentRealtimeHandler = null
+    }
+  }
+
   async function safeDisconnect(): Promise<void> {
+    removePersistentHandler()
     if (client) {
       try { await client.disconnect() } catch { /* ignore */ }
       client = null
@@ -381,7 +394,17 @@ export function usePulsePen() {
         // 不阻塞流程
       }
 
-      // 7. 设置第一个部位
+      // 7. 注册持久 realtime 监听器（贯穿整个采集生命周期）
+      //    负责：Canvas 波形数据 + 寻脉阶段信号检测
+      persistentRealtimeHandler = (data: PenRealtimeData) => {
+        latestPulseValue.value = data.pulseValue
+        if (phase.value === 'searching') {
+          checkSignal(data.pulseValue)
+        }
+      }
+      client.onRealtimeData(persistentRealtimeHandler)
+
+      // 8. 设置第一个部位
       currentPosition.value = 'cun'
       positionIndex.value = 0
       resetCollectState()
