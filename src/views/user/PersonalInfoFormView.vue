@@ -28,14 +28,27 @@ const showErrorToast = ref(false)
 const errorToastText = ref('')
 const isSubmitting = ref(false)
 
+// ── 空格键长按录音状态 ──
+let isLongPressRecording = false
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let recordingPromise: Promise<string | null> | null = null
+const LONG_PRESS_DELAY = 300  // 长按判定延迟（ms）
+
 onMounted(async () => {
-  // 文字直接显示完整内容，TTS 作为背景音播放
+  // 先注册空格键监听（在 TTS 播报前，确保用户随时可以长按空格打断）
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keyup', handleKeyUp)
+  // TTS 播报提示语（不阻塞，用户可以随时按空格开始语音输入）
   await ttsStore.speakSync(fullBubbleText, 'nurse', () => {})
 })
 
 onUnmounted(() => {
   ttsStore.stop()
   stopSpeech()
+  // 清理空格键监听
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
 })
 
 /** 路由离开前确保麦克风释放（双重保障） */
@@ -151,6 +164,16 @@ const onVoiceMicClick = async () => {
     return
   }
 
+  await processVoiceText(text)
+}
+
+const onStopRecording = () => {
+  showVoiceToast.value = false
+  stopSpeech()
+}
+
+// ── 语音文本处理（LLM 解析 → 填充表单）── 按钮和空格键共用 ──
+const processVoiceText = async (text: string) => {
   isVoiceParsing.value = true
   try {
     const messages = buildUserInfoParseMessages(text)
@@ -180,9 +203,62 @@ const onVoiceMicClick = async () => {
   }
 }
 
-const onStopRecording = () => {
+// ── 空格键长按录音 ──
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key !== ' ' || e.repeat) return
+  if (isVoiceBusy.value || isVoiceParsing.value || isLongPressRecording) return
+
+  e.preventDefault()
+
+  // 延迟 300ms 判断是否为长按
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    isLongPressRecording = true
+    isVoiceBusy.value = true
+    ttsStore.stop()
+    showVoiceToast.value = true
+    showErrorToast.value = false
+
+    // 启动录音（Promise 在 stopSpeech 后 resolve）
+    recordingPromise = startSpeechAndWait()
+  }, LONG_PRESS_DELAY)
+}
+
+const handleKeyUp = async (e: KeyboardEvent) => {
+  if (e.key !== ' ') return
+
+  // 取消长按定时器（如果还没触发，说明是短按，忽略）
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+    return
+  }
+
+  if (!isLongPressRecording) return
+
+  e.preventDefault()
+  isLongPressRecording = false
   showVoiceToast.value = false
+
+  // 停止录音，获取识别结果
   stopSpeech()
+  const text = recordingPromise ? await recordingPromise : null
+  recordingPromise = null
+
+  if (speechError.value) {
+    showErrorToast.value = true
+    errorToastText.value = speechError.value || '语音识别失败，请重试'
+    setTimeout(() => { showErrorToast.value = false }, 3000)
+    isVoiceBusy.value = false
+    return
+  }
+
+  if (!text) {
+    isVoiceBusy.value = false
+    return
+  }
+
+  await processVoiceText(text)
 }
 
 const onSubmit = () => {

@@ -9,8 +9,8 @@
 //                                             done
 //
 // 每个部位的完整流程：
-//   1. enterSearch() → 用户通过波形找位置 → signalDetected=true
-//   2. 用户点击"已就位" → enterCollect() → setPulsePosition()
+//   1. clearCollection() + setPulsePosition() → 用户通过波形找位置 → signalDetected=true
+//   2. 用户点击"已就位" → clearCollection() + setPulsePosition() + enterCollect()
 //   3. SDK 自动采集浮→中→沉（用户控制按压力度）
 //   4. onCollectionCompleted → 保存数据 → position_done
 //   5. 显示分析结果 → 提示移动 → 用户确认 → 回到步骤 1（下一部位）
@@ -31,6 +31,7 @@ import type {
   PenPulseAnalysisReport,
 } from '@/lib/pulse-pen'
 import { convertPulseData } from '@/lib/pulse-pen/convertPulseData'
+import { getRawNotifyStats, resetRawNotifyStats } from '@/lib/pulse-pen/bleAdapter'
 import type { IPulseAnalysisData } from '@/types/consultation'
 
 // ── 日志工具 ──────────────────────────────────────────────
@@ -65,10 +66,11 @@ const POSITION_NAMES: Record<PositionKey, string> = { cun: '寸', guan: '关', c
 const PRESSURE_MAP: Record<number, PressureKey> = { 1: 'float', 3: 'middle', 5: 'deep' }
 const PRESSURE_NAMES: Record<PressureKey, string> = { float: '浮', middle: '中', deep: '沉' }
 const DEVICE_STATUS_MAP: Record<number, string> = { 1: 'standby', 2: 'search', 3: 'collect' }
-const COLLECTION_TIMEOUT_MS = 60_000
 const SIGNAL_BUFFER_SIZE = 100
 const SEARCH_NO_SIGNAL_WARN_MS = 120_000  // 2 分钟无信号警告
 const SEARCH_IDLE_PROMPT_MS = 30_000      // 30 秒空闲提示
+const INVALID_WAIT_MS = 30_000          // 采集无效后等待 SDK 自动恢复的超时（30 秒）
+const INVALID_MAX_RETRIES = 2           // 不再使用（保留常量避免引用错误）
 
 // ── Composable ────────────────────────────────────────────
 
@@ -89,6 +91,7 @@ export function usePulsePen() {
   const collectProgress = ref(0)
   const invalidReason = ref<string | null>(null)
   const deviceStatus = ref('unknown')
+  const lastCompletedPressure = ref<PressureKey | null>(null)  // 刚完成的压力档（驱动过渡提示）
 
   // 分析结果
   const currentAnalysis = ref<PenPulseAnalysisReport | null>(null)
@@ -104,19 +107,17 @@ export function usePulsePen() {
 
   // ── 内部状态（非响应式）──
   let client: PulseCollectionPenClient | null = null
-  let collectTimer: ReturnType<typeof setTimeout> | null = null
   let searchNoSignalTimer: ReturnType<typeof setTimeout> | null = null
   let searchIdleTimer: ReturnType<typeof setTimeout> | null = null
-  let collectGen = 0
   let signalBuffer: number[] = []
   let lastSignalCheck = 0
+  let rtLogThrottle = 0  // realtime 日志节流时间戳
+  let invalidTimer: ReturnType<typeof setTimeout> | null = null
+  let invalidRetryCount = 0
 
-  // 持久监听器（贯穿整个采集生命周期：realtime + disconnected）
+  // 持久监听器引用（供断开时移除）
   let persistentRealtimeHandler: ((data: PenRealtimeData) => void) | null = null
   let persistentDisconnectHandler: (() => void) | null = null
-
-  // 采脉阶段的 collectTimer 清理函数引用（供 cancel/retry 调用）
-  let collectCleanup: (() => void) | null = null
 
   // 每个部位的原始采集事件（用于最终数据转换）
   const completedEvents: Record<PositionKey, PenCollectionCompletedEvent | null> = {
@@ -135,20 +136,16 @@ export function usePulsePen() {
     pressureLevel.value = 2
     invalidReason.value = null
     currentAnalysis.value = null
+    lastCompletedPressure.value = null
+    // 重置 invalid 重试状态
+    invalidRetryCount = 0
+    if (invalidTimer) { clearTimeout(invalidTimer); invalidTimer = null }
   }
 
   function resetSignalDetection(): void {
     signalBuffer = []
     signalDetected.value = false
     lastSignalCheck = 0
-  }
-
-  function stopCollectTimer(): void {
-    if (collectTimer) {
-      clearTimeout(collectTimer)
-      collectTimer = null
-      log('⏱️ collectTimer 已清除')
-    }
   }
 
   /** 启动寻脉阶段的定时器（无信号警告 + 空闲提示） */
@@ -233,148 +230,268 @@ export function usePulsePen() {
     }
   }
 
-  // ── 注册持久监听器（贯穿整个采集生命周期）──
+  // ── 注册所有 SDK 事件监听器（连接后立即注册，对齐 test.html）──
 
-  function registerPersistentHandlers(): void {
+  function registerAllHandlers(): void {
     if (!client) return
 
-    // realtime：Canvas 波形 + 寻脉信号检测
+    // realtime：Canvas 波形 + 寻脉信号检测 + 采脉阶段状态更新
     persistentRealtimeHandler = (data: PenRealtimeData) => {
       latestPulseValue.value = data.pulseValue
       if (phase.value === 'searching') {
         checkSignal(data.pulseValue)
       }
+      // 采脉阶段：更新压力/设备状态（节流日志）
+      if (phase.value === 'collecting') {
+        pressureLevel.value = data.pressureLevel
+        deviceStatus.value = DEVICE_STATUS_MAP[data.deviceStatus] ?? 'unknown'
+        if (data.pressureType) {
+          currentPressure.value = PRESSURE_MAP[data.pressureType] ?? null
+        }
+        const now = Date.now()
+        if (!rtLogThrottle || now - rtLogThrottle > 2000) {
+          rtLogThrottle = now
+          log('📡 realtime:', {
+            stable: data.stable,
+            pressureLevel: data.pressureLevel,
+            pressureType: data.pressureType,
+            deviceStatus: data.deviceStatus,
+            pulseValue: data.pulseValue,
+            position: data.position,
+          })
+        }
+      }
     }
     client.onRealtimeData(persistentRealtimeHandler)
 
-    // disconnected：任何阶段蓝牙断开都进入 error
+    // disconnected
     persistentDisconnectHandler = () => {
       warn('🔌 蓝牙连接断开（持久监听器捕获）, 当前阶段:', phase.value)
-      stopCollectTimer()
       stopSearchTimers()
-      if (collectCleanup) { collectCleanup(); collectCleanup = null }
       phase.value = 'error'
     }
     client.onDisconnected(persistentDisconnectHandler)
 
-    log('🔌 持久监听器已注册（realtime + disconnected）')
-  }
-
-  // ── SDK 事件注册（采脉阶段）──
-
-  function startCollectTimer(): void {
-    if (!client) return
-    const gen = ++collectGen
-    const pos = currentPosition.value!
-    log('📋 startCollectTimer: gen=', gen, ', 部位=', POSITION_NAMES[pos])
-
-    function isCurrent(): boolean { return gen === collectGen }
-
-    function handleRealtimeData(data: PenRealtimeData): void {
-      if (!isCurrent()) return
-      pressureLevel.value = data.pressureLevel
-      deviceStatus.value = DEVICE_STATUS_MAP[data.deviceStatus] ?? 'unknown'
-      if (data.pressureType) {
-        currentPressure.value = PRESSURE_MAP[data.pressureType] ?? null
+    // 采集进度
+    client.onCollectionProgress((event: PenCollectionProgress) => {
+      if (phase.value !== 'collecting') return
+      invalidReason.value = null
+      // SDK 自动恢复了，取消跳过定时器
+      if (invalidTimer) {
+        clearTimeout(invalidTimer)
+        invalidTimer = null
+        log('✅ 采集恢复：invalid 定时器已取消')
       }
-    }
-
-    function handleCollectionProgress(event: PenCollectionProgress): void {
-      if (!isCurrent()) return
       collectProgress.value = event.percent
       const pres = PRESSURE_MAP[event.pressureType]
       if (pres) currentPressure.value = pres
-    }
+      const rawStats = getRawNotifyStats()
+      log('📈 采集进度:', {
+        pressureType: event.pressureType,
+        pressureName: pres ? PRESSURE_NAMES[pres] : '?',
+        percent: event.percent,
+        count: event.count,
+        total: event.total,
+        position: event.position,
+        // 诊断：原始 BLE 通知数 vs SDK 解析帧数
+        rawBleNotify: rawStats.count,
+        rawBleBytes: rawStats.bytes,
+      })
+    })
 
-    function handlePressureLevel(level: PenPressureLevel): void {
-      if (!isCurrent()) return
+    // 压力等级
+    client.onPressureLevel((level: PenPressureLevel) => {
+      if (phase.value !== 'collecting' && phase.value !== 'searching') return
       pressureLevel.value = level
       log('📊 压力等级变化:', level,
         ['(过小)', '(浮)', '(中)', '(沉)', '(过大)'][level] ?? '')
-    }
+    })
 
-    function handleDeviceStatus(status: PenDeviceWorkStatus): void {
-      if (!isCurrent()) return
-      deviceStatus.value = DEVICE_STATUS_MAP[status] ?? 'unknown'
-    }
+    // 设备状态
+    client.onDeviceStatus((status: PenDeviceWorkStatus) => {
+      const name = DEVICE_STATUS_MAP[status] ?? 'unknown'
+      deviceStatus.value = name
+      log('🔧 设备状态变化:', status, '→', name)
+    })
 
-    function handleCollectionInvalid(event: PenCollectionInvalidEvent): void {
-      if (!isCurrent()) return
+    // 采集无效 — 对齐 SDK test.html 官方用法：不调用任何 SDK 命令，等待自动恢复
+    client.onCollectionInvalid((event: PenCollectionInvalidEvent) => {
+      if (phase.value !== 'collecting') return
+      const rawStats = getRawNotifyStats()
+      log('⚠️ 采集无效:', {
+        reason: event.reason,
+        position: event.position,
+        pressureType: event.pressureType,
+        count: event.count,
+        currentProgress: collectProgress.value,
+        rawBleNotify: rawStats.count,
+        rawBleBytes: rawStats.bytes,
+      })
+
+      // 显示提示（UI 层会根据 reason 显示不同文案）
       invalidReason.value = event.reason
-      log('⚠️ 采集无效:', event.reason, ', 等待SDK重试')
-    }
 
-    function handlePressureCompleted(event: PenPressureCompletedEvent): void {
-      if (!isCurrent()) return
+      // 清除旧的跳过定时器（如果用户多次触发 invalid，重置等待时间）
+      if (invalidTimer) { clearTimeout(invalidTimer); invalidTimer = null }
+
+      // 30 秒内 SDK 没有自动恢复 → 跳过该部位
+      // 注意：不调用 clearCollection() 或 setPulsePosition()！
+      // SDK 官方 demo 在 collection-invalid 时不做任何 SDK 调用，
+      // 设备会在用户重新稳定按压后自动恢复采集。
+      invalidTimer = setTimeout(() => {
+        invalidTimer = null
+        if (phase.value !== 'collecting') return  // 已恢复或已完成
+
+        warn(`⚠️ 采集无效 30 秒未恢复 (${event.reason})，跳过该部位`)
+        const pos = currentPosition.value!
+        positionsDone.value = { ...positionsDone.value, [pos]: true }
+        phase.value = 'position_done'
+        log('📍 阶段转换: collecting → position_done（30秒超时跳过）')
+      }, INVALID_WAIT_MS)
+    })
+
+    // 单档完成
+    client.onPressureCompleted((event: PenPressureCompletedEvent) => {
+      if (phase.value !== 'collecting') return
       const pres = PRESSURE_MAP[event.pressureType]
       if (pres) {
         pressuresDone.value = { ...pressuresDone.value, [pres]: true }
+        lastCompletedPressure.value = pres  // 驱动过渡提示
       }
       const doneCount = Object.values(pressuresDone.value).filter(Boolean).length
-      log(`✅ 压力档完成: ${pres ? PRESSURE_NAMES[pres] : '?'}, 已完成 ${doneCount}/3`)
-    }
+      // 诊断：打印 record 的真实结构（看 rawAds/oneAds 到底有没有数据）
+      const firstRecord = event.records?.[0]
+      if (firstRecord) {
+        log('📋 record[0] 结构:', {
+          keys: Object.keys(firstRecord),
+          rawAdsType: typeof firstRecord.rawAds,
+          rawAdsIsArray: Array.isArray(firstRecord.rawAds),
+          rawAdsLength: firstRecord.rawAds?.length ?? 'undefined',
+          rawPulseLength: (firstRecord as any).rawPulse?.length ?? 'undefined',
+          oneAdsLength: firstRecord.oneAds?.length ?? 'undefined',
+          motorDataLength: (firstRecord as any).motorData?.length ?? 'undefined',
+          // 打印所有非数组字段
+          scalarFields: Object.fromEntries(
+            Object.entries(firstRecord).filter(([, v]) => !Array.isArray(v))
+          ),
+        })
+      }
+      const rawAdsLengths = event.records?.map(r => r.rawAds?.length ?? 0) ?? []
+      const oneAdsLengths = event.records?.map(r => r.oneAds?.length ?? 0) ?? []
+      log(`✅ 压力档完成: ${pres ? PRESSURE_NAMES[pres] : '?'}`, {
+        pressureType: event.pressureType,
+        records: event.records?.length ?? '?',
+        position: event.position,
+        doneCount: `${doneCount}/3`,
+        rawAdsLengths,
+        oneAdsLengths,
+        maxRawAds: rawAdsLengths.length > 0 ? Math.max(...rawAdsLengths) : 0,
+      })
+    })
 
-    function handleCollectionCompleted(event: PenCollectionCompletedEvent): void {
-      if (!isCurrent()) return
-      log(`✅ ${POSITION_NAMES[pos]}部采集完成`, {
+    // 整部位完成
+    client.onCollectionCompleted((event: PenCollectionCompletedEvent) => {
+      if (phase.value !== 'collecting') return
+
+      // 如果 invalid 等待中，取消定时器（SDK 延迟返回了完整数据）
+      if (invalidTimer) {
+        clearTimeout(invalidTimer)
+        invalidTimer = null
+        log('✅ invalid 等待取消：onCollectionCompleted 延迟触发，数据完整')
+      }
+      invalidRetryCount = 0
+
+      const pos = currentPosition.value!
+      const rawStats = getRawNotifyStats()
+
+      // 🔍 诊断：检查 SDK client 内部属性（寻找 rawAds 真实数据）
+      try {
+        const clientAny = client as any
+        const proto = Object.getPrototypeOf(clientAny)
+        const protoKeys = proto ? Object.getOwnPropertyNames(proto).filter(k => k !== 'constructor') : []
+        const instanceKeys = Object.keys(clientAny)
+        log('🔍 SDK 内部探测:', {
+          instanceKeys: instanceKeys.slice(0, 30),
+          protoMethods: protoKeys.slice(0, 30),
+        })
+        // 直接检查关键内部属性
+        log('🔍 stableRecords:', {
+          exists: 'stableRecords' in clientAny,
+          isArray: Array.isArray(clientAny.stableRecords),
+          length: clientAny.stableRecords?.length ?? 'N/A',
+          firstKeys: clientAny.stableRecords?.[0] ? Object.keys(clientAny.stableRecords[0]) : 'empty',
+        })
+        log('🔍 completedRecords:', {
+          exists: 'completedRecords' in clientAny,
+          isArray: Array.isArray(clientAny.completedRecords),
+          length: clientAny.completedRecords?.length ?? 'N/A',
+          firstKeys: clientAny.completedRecords?.[0] ? Object.keys(clientAny.completedRecords[0]) : 'empty',
+        })
+        log('🔍 buffer:', {
+          exists: 'buffer' in clientAny,
+          type: typeof clientAny.buffer,
+          length: clientAny.buffer?.length ?? clientAny.buffer?.byteLength ?? 'N/A',
+        })
+        // 如果 stableRecords 有数据，检查 rawAds
+        const sr = clientAny.stableRecords
+        if (Array.isArray(sr) && sr.length > 0) {
+          const first = sr[0]
+          log('🔍 stableRecord[0] 详情:', {
+            keys: Object.keys(first),
+            rawAdsLen: first.rawAds?.length,
+            oneAdsLen: first.oneAds?.length,
+            rawPulseLen: first.rawPulse?.length,
+          })
+        }
+        const cr = clientAny.completedRecords
+        if (Array.isArray(cr) && cr.length > 0) {
+          const first = cr[0]
+          log('🔍 completedRecord[0] 详情:', {
+            keys: Object.keys(first),
+            rawAdsLen: first.rawAds?.length,
+            oneAdsLen: first.oneAds?.length,
+            rawPulseLen: first.rawPulse?.length,
+          })
+        }
+      } catch (e) {
+        warn('🔍 SDK 内部探测失败:', e)
+      }
+
+      // 诊断：打印每个 record 的 rawAds 长度
+      const rawAdsLengths = event.records.map(r => r.rawAds?.length ?? 0)
+      const oneAdsLengths = event.records.map(r => r.oneAds?.length ?? 0)
+      log(`✅✅✅ ${POSITION_NAMES[pos]}部采集完成`, {
         记录数: event.records.length,
         分析: event.analysis ? '有' : '无',
+        mode: event.mode,
+        timestamp: event.timestamp,
+        rawAdsLengths,
+        oneAdsLengths,
+        maxRawAds: rawAdsLengths.length > 0 ? Math.max(...rawAdsLengths) : 0,
+        // 诊断
+        rawBleNotify: rawStats.count,
+        rawBleBytes: rawStats.bytes,
       })
-      stopCollectTimer()
-      cleanup()
 
       completedEvents[pos] = event
       currentAnalysis.value = event.analysis ?? null
       positionsDone.value = { ...positionsDone.value, [pos]: true }
       phase.value = 'position_done'
       log('📍 阶段转换: collecting → position_done')
-    }
+    })
 
-    function handleError(error: PenErrorEvent): void {
-      if (!isCurrent()) return
-      error('❌ 设备错误:', error.message)
-      stopCollectTimer()
-      cleanup()
+    // 设备错误
+    client.onError((err: PenErrorEvent) => {
+      error('❌ 设备错误:', { code: err.code, message: err.message })
       phase.value = 'error'
-    }
+    })
 
-    // 注意：disconnected 由持久监听器处理，这里不再注册
+    // SDK 内部日志（诊断用）
+    client.onLog((message: string) => {
+      console.log('[SDK]', message)
+    })
 
-    // 注册采脉阶段专属监听器
-    client.onRealtimeData(handleRealtimeData)
-    client.onCollectionProgress(handleCollectionProgress)
-    client.onPressureLevel(handlePressureLevel)
-    client.onDeviceStatus(handleDeviceStatus)
-    client.onCollectionInvalid(handleCollectionInvalid)
-    client.onPressureCompleted(handlePressureCompleted)
-    client.onCollectionCompleted(handleCollectionCompleted)
-    client.onError(handleError)
-    log('📋 采脉监听器已注册（8 个）')
-
-    function cleanup(): void {
-      if (!client) return
-      client.removeEventListener('realtime-data', handleRealtimeData as unknown as EventListener)
-      client.removeEventListener('collection-progress', handleCollectionProgress as unknown as EventListener)
-      client.removeEventListener('pressure-level', handlePressureLevel as unknown as EventListener)
-      client.removeEventListener('device-status', handleDeviceStatus as unknown as EventListener)
-      client.removeEventListener('collection-invalid', handleCollectionInvalid as unknown as EventListener)
-      client.removeEventListener('pressure-completed', handlePressureCompleted as unknown as EventListener)
-      client.removeEventListener('collection-completed', handleCollectionCompleted as unknown as EventListener)
-      client.removeEventListener('error-message', handleError as unknown as EventListener)
-      collectCleanup = null
-      log('📋 采脉监听器已清理')
-    }
-
-    // 暴露 cleanup 供 cancel/retry 调用
-    collectCleanup = cleanup
-
-    // 超时保护
-    collectTimer = setTimeout(() => {
-      warn('⏱️ 采集超时（60秒）')
-      stopCollectTimer()
-      cleanup()
-      phase.value = 'error'
-    }, COLLECTION_TIMEOUT_MS)
+    log('🔌 所有 SDK 事件监听器已注册（11 个，含 SDK 内部日志）')
   }
 
   // ── 公共方法 ──
@@ -410,6 +527,8 @@ export function usePulsePen() {
         try {
           const { invoke } = await import('@tauri-apps/api/core')
           await invoke('ble_disconnect')
+          // 给 BLE 设备时间重新开始广播（设备断开后不会立刻广播）
+          await new Promise(r => setTimeout(r, 1000))
           log('🔧 残留连接清理完成')
         } catch { /* 无残留连接时正常 */ }
         await installBleAdapter()
@@ -432,6 +551,23 @@ export function usePulsePen() {
         verboseLog: import.meta.env.DEV,
       })
 
+      // 5. 降低稳定帧要求：设备每次只发 ~295 帧就结束，SDK 默认要求 400 帧
+      //    将阈值降到 200，让设备一轮就能完成采集
+      const proto = Object.getPrototypeOf(client)
+      const originalFn = proto?.getStableFrameCount
+      const originalValue = typeof originalFn === 'function' ? originalFn.call(client) : 'N/A'
+      log('📱 getStableFrameCount 原始值:', originalValue)
+
+      // 在 prototype 上覆盖
+      if (proto && typeof proto.getStableFrameCount === 'function') {
+        proto.getStableFrameCount = function () { return 200 }
+        log('📱 ✅ 已在 prototype 上覆盖 getStableFrameCount → 200')
+      }
+      // 同时在实例上覆盖（双重保障）
+      ;(client as any).getStableFrameCount = function () { return 200 }
+      log('📱 ✅ 已在 instance 上覆盖 getStableFrameCount → 200')
+      log('📱 验证:', (client as any).getStableFrameCount())
+
       log('📱 请求设备（namePrefix: MZY）...')
       const device = await client.requestDevice({ namePrefix: 'MZY' })
       log('📱 设备已选择:', device.name ?? device.id)
@@ -445,28 +581,18 @@ export function usePulsePen() {
       }
       log('✅ 设备连接成功')
 
-      // 5. 切换到采脉模式（预热设备）
-      log('📡 发送 enterCollect 命令...')
-      try {
-        await client.enterCollect()
-        log('📡 enterCollect 成功')
-      } catch (e) {
-        warn('📡 enterCollect 异常:', e instanceof Error ? e.message : e)
-      }
+      // 5. 清空采集缓存 + 设置初始部位（对齐 SDK test.html 官方用法）
+      log('📡 clearCollection + setPulsePosition(cun)')
+      client.clearCollection()
+      client.setPulsePosition('cun')
 
-      // 6. 开始寻脉
-      log('📡 发送 enterSearch 命令...')
-      try {
-        await client.enterSearch()
-        log('📡 enterSearch 成功')
-      } catch (e) {
-        warn('📡 enterSearch 异常:', e instanceof Error ? e.message : e)
-      }
+      // 重置 BLE 原始通知计数（诊断丢帧用）
+      resetRawNotifyStats()
 
-      // 7. 注册持久监听器
-      registerPersistentHandlers()
+      // 6. 注册所有 SDK 事件监听器（对齐 test.html：连接后立即注册）
+      registerAllHandlers()
 
-      // 8. 设置第一个部位
+      // 7. 设置第一个部位
       currentPosition.value = 'cun'
       positionIndex.value = 0
       resetCollectState()
@@ -493,27 +619,23 @@ export function usePulsePen() {
       // 寻脉 → 采脉
       stopSearchTimers()
 
-      log('📡 发送 enterCollect 命令...')
-      try {
-        await client.enterCollect()
-        log('📡 enterCollect 成功')
-      } catch (e) {
-        warn('📡 enterCollect 异常:', e instanceof Error ? e.message : e)
-      }
-
       const pos = currentPosition.value!
-      log('📡 发送 setPulsePosition:', pos)
-      const result = client.setPulsePosition(pos)
-      if (result.code !== 0) {
-        error('❌ setPulsePosition 失败:', result.message)
-        phase.value = 'error'
-        return
+
+      // 切换到采脉模式（对齐 SDK getting-started.html 文档）
+      // 顺序：setPulsePosition() → enterCollect()
+      log('📡 clearCollection + setPulsePosition + enterCollect:', pos)
+      client.clearCollection()
+      client.setPulsePosition(pos)
+      try {
+        const result = await client.enterCollect()
+        log('📡 enterCollect 结果:', result)
+      } catch (e) {
+        warn('⚠️ enterCollect 调用失败:', e)
       }
-      log('📡 setPulsePosition 成功')
+      resetRawNotifyStats()
 
       phase.value = 'collecting'
       resetCollectState()
-      startCollectTimer()
       log('📍 阶段转换: searching → collecting（', POSITION_NAMES[pos], '部）')
 
     } else if (phase.value === 'position_done') {
@@ -526,19 +648,12 @@ export function usePulsePen() {
         resetCollectState()
         resetSignalDetection()
 
-        log('📡 发送 enterSearch 命令（下一部位）...')
-        try {
-          await client.enterSearch()
-          log('📡 enterSearch 成功')
-        } catch (e) {
-          warn('📡 enterSearch 异常:', e instanceof Error ? e.message : e)
-          // enterSearch 失败可能是蓝牙断开，检查连接状态
-          if (!client.isConnected) {
-            error('❌ 蓝牙已断开，无法进入寻脉模式')
-            phase.value = 'error'
-            return
-          }
-        }
+        // 清空采集缓存 + 设置下一部位（对齐 SDK test.html）
+        log('📡 clearCollection + setPulsePosition:', POSITIONS[nextIndex])
+        client.clearCollection()
+        client.setPulsePosition(POSITIONS[nextIndex]!)
+        resetRawNotifyStats()  // 重置 BLE 计数（诊断用）
+
         phase.value = 'searching'
         startSearchTimers()
         log('📍 阶段转换: position_done → searching（',
@@ -558,10 +673,7 @@ export function usePulsePen() {
   async function cancel(): Promise<void> {
     log('❌ cancel() 调用, 当前阶段:', phase.value)
     cancelled.value = true
-    stopCollectTimer()
     stopSearchTimers()
-    collectGen++  // 使所有 collectTimer handlers 失效
-    if (collectCleanup) { collectCleanup(); collectCleanup = null }
     await safeDisconnect()
     phase.value = 'idle'
     log('📍 阶段转换: → idle（已取消）')
@@ -572,10 +684,7 @@ export function usePulsePen() {
       ', client:', client ? '存在' : 'null',
       ', 连接:', client?.isConnected ?? false)
 
-    stopCollectTimer()
     stopSearchTimers()
-    collectGen++
-    if (collectCleanup) { collectCleanup(); collectCleanup = null }
 
     // 检查蓝牙连接状态
     if (!client || !client.isConnected) {
@@ -589,23 +698,31 @@ export function usePulsePen() {
     resetCollectState()
     resetSignalDetection()
 
-    log('📡 发送 enterSearch 命令（重试）...')
-    try {
-      await client.enterSearch()
-      log('📡 enterSearch 成功')
-    } catch (e) {
-      warn('📡 enterSearch 异常:', e instanceof Error ? e.message : e)
-      // 如果 enterSearch 失败，尝试完整重连
-      log('🔄 enterSearch 失败，执行完整重连...')
-      await safeDisconnect()
-      await startCollection()
-      return
-    }
+    // 清空采集缓存 + 重新设置部位（对齐 SDK test.html）
+    const pos = currentPosition.value ?? 'cun'
+    log('📡 clearCollection + setPulsePosition（重试）:', pos)
+    client.clearCollection()
+    client.setPulsePosition(pos)
+    resetRawNotifyStats()  // 重置 BLE 计数（诊断用）
 
     phase.value = 'searching'
     startSearchTimers()
     log('📍 阶段转换: error → searching（重试，',
       POSITION_NAMES[currentPosition.value ?? 'cun'], '部）')
+  }
+
+  /** 跳过当前部位（用户手动或超时自动触发） */
+  function skipPosition(): void {
+    if (phase.value !== 'collecting') return
+    log('⏭️ skipPosition() 调用，跳过', POSITION_NAMES[currentPosition.value ?? 'cun'], '部')
+
+    // 取消等待定时器
+    if (invalidTimer) { clearTimeout(invalidTimer); invalidTimer = null }
+
+    const pos = currentPosition.value!
+    positionsDone.value = { ...positionsDone.value, [pos]: true }
+    phase.value = 'position_done'
+    log('📍 阶段转换: collecting → position_done（手动跳过）')
   }
 
   function getFinalData(): IPulseAnalysisData {
@@ -670,9 +787,9 @@ export function usePulsePen() {
     phase, currentPosition, positionIndex, positionsDone,
     signalDetected, currentPressure, pressureLevel, pressuresDone,
     collectProgress, invalidReason, deviceStatus, currentAnalysis,
-    cancelled, isDone, latestPulseValue, searchWarning,
+    cancelled, isDone, latestPulseValue, searchWarning, lastCompletedPressure,
     // 方法
-    startCollection, confirmPosition, cancel, retry, getFinalData,
+    startCollection, confirmPosition, cancel, retry, skipPosition, getFinalData,
     // 常量（供 UI 使用）
     POSITION_NAMES, PRESSURE_NAMES, POSITIONS,
   }

@@ -46,7 +46,7 @@
 
       <!-- 操作指导 -->
       <div class="pulse-tip">
-        💡 请调整诊脉笔的位置，找到脉搏波形最高的位置
+        💡 {{ searchTip }}
       </div>
 
       <!-- 寻脉警告（30秒空闲 / 2分钟无信号） -->
@@ -127,6 +127,16 @@
 
       <!-- 操作指导 -->
       <div class="pulse-tip">{{ collectTip }}</div>
+
+      <!-- 采集无效时显示跳过按钮 -->
+      <button
+        v-if="invalidReason"
+        class="pulse-confirm-btn"
+        style="margin-top: 12px; background: #999; color: white; font-size: 14px;"
+        @click="$emit('skip-position')"
+      >
+        ⏭️ 跳过此部位（30 秒后自动跳过）
+      </button>
     </template>
 
     <!-- ═══ 部位完成 ═══ -->
@@ -162,6 +172,16 @@
           </div>
         </div>
       </div>
+      <!-- early-end 无分析数据时的提示 -->
+      <div v-else class="pulse-analysis-panel pulse-analysis-panel--partial">
+        <div class="pulse-analysis-title">
+          {{ currentPositionName }}采集数据不完整
+        </div>
+        <div class="pulse-tip" style="text-align: center; padding: 12px 0;">
+          设备提前结束了采集，部分压力档数据已记录。<br>
+          可以继续下一部位或重试当前部位。
+        </div>
+      </div>
 
       <!-- 移动提示 -->
       <div class="pulse-tip">
@@ -183,8 +203,14 @@
     <!-- ═══ 错误 ═══ -->
     <template v-else-if="phase === 'error'">
       <div class="capture-icon">⚠️</div>
-      <div class="capture-title" style="font-size: 36px;">采集遇到问题</div>
-      <div class="pulse-tip">请检查设备连接和佩戴情况</div>
+      <div class="capture-title" style="font-size: 36px;">
+        {{ invalidReason === 'early-end' ? '采集数据不完整' : '采集遇到问题' }}
+      </div>
+      <div class="pulse-tip">
+        {{ invalidReason === 'early-end'
+          ? '设备提前结束了采集，可能是按压力度发生了变化。请保持稳定力度重试。'
+          : '请检查设备连接和佩戴情况' }}
+      </div>
       <div style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
         <button class="pulse-confirm-btn is-ready" @click="$emit('retry')">
           🔄 重新采集当前部位
@@ -222,12 +248,14 @@ const props = defineProps<{
     kValue?: number
   } | null
   searchWarning: string
+  lastCompletedPressure: string | null
 }>()
 
 defineEmits<{
   (e: 'confirm'): void
   (e: 'cancel'): void
   (e: 'retry'): void
+  (e: 'skip-position'): void
 }>()
 
 // ── 常量 ──────────────────────────────────────────────────
@@ -246,11 +274,12 @@ const pressures = [
 const POSITION_NAMES: Record<string, string> = { cun: '寸', guan: '关', chi: '尺' }
 
 const INVALID_REASON_MAP: Record<string, string> = {
-  'unstable-frame': '帧不稳定，请保持手腕静止',
-  'early-end': '采集提前结束，请等待完成',
+  'unstable-frame': '帧不稳定，请保持手腕完全静止',
+  'early-end': '采集提前结束，请保持稳定按压',
   'new-start': '重新开始采集',
-  'pressure-mismatch': '压力档位不匹配，正在调整',
+  'pressure-mismatch': '压力档位不匹配，请调整力度',
   'invalid-frame': '无效帧，正在重试',
+  'skipped': '该部位采集跳过，使用其他部位数据',
 }
 
 // ── 计算属性 ──────────────────────────────────────────────
@@ -266,21 +295,41 @@ const invalidReasonText = computed(() =>
 )
 
 const collectTip = computed(() => {
-  if (props.invalidReason) return '⚠️ 请保持手腕稳定放松，设备正在自动重试'
-  if (props.pressureLevel === 0) return '⚠️ 力度过轻（三灯全灭），请稍微加大按压力度'
-  if (props.pressureLevel === 4) return '⚠️ 力度过大（三灯全亮），请稍微减轻按压力度'
-  if (props.currentPressure) {
-    const pName = { float: '浮', middle: '中', deep: '沉' }[props.currentPressure] ?? ''
-    const ledDesc = { float: '第1灯亮', middle: '第2灯亮', deep: '第3灯亮' }[props.currentPressure] ?? ''
-    return `请保持力度（${ledDesc}），正在采集${pName}脉`
+  // 压力档过渡提示（刚完成一档，提示进入下一档）
+  if (props.lastCompletedPressure === 'float') {
+    return '✅ 浮取完成，请稍微加大力度进入中取'
   }
-  return '请保持手腕稳定放松，不要移动'
+  if (props.lastCompletedPressure === 'middle') {
+    return '✅ 中取完成，请继续加大力度进入沉取'
+  }
+  if (props.lastCompletedPressure === 'deep') {
+    return '✅ 沉取完成，三档采集完毕'
+  }
+  // 异常状态
+  if (props.invalidReason) {
+    return '💡 请保持手腕放松不动，设备正在尝试自动恢复'
+  }
+  if (props.pressureLevel === 0) return '⚠️ 力度过轻，请稍微加大按压'
+  if (props.pressureLevel === 4) return '⚠️ 力度过大，请稍微减轻按压'
+  // 各压力档采集中的引导
+  if (props.currentPressure === 'float') return '浮取采集中 — 轻搭笔头，不要用力'
+  if (props.currentPressure === 'middle') return '中取采集中 — 保持中等力度按压'
+  if (props.currentPressure === 'deep') return '沉取采集中 — 保持较重力度按压'
+  return '请保持手腕稳定，不要移动'
+})
+
+// 寻脉阶段提示（按部位区分）
+const searchTip = computed(() => {
+  if (props.currentPosition === 'cun') return '将笔轻放在寸部（靠近手掌），找到脉搏最强的位置'
+  if (props.currentPosition === 'guan') return '向小臂方向移动约一指宽至关部，找到脉搏最强的位置'
+  if (props.currentPosition === 'chi') return '继续向小臂移动约一指宽至尺部，找到脉搏最强的位置'
+  return '调整笔的位置，找到脉搏波形最高的点'
 })
 
 const moveTip = computed(() => {
-  if (props.positionIndex === 0) return '📍 寸部采集完成！请将诊脉笔向小臂方向移动至「关」脉位置'
-  if (props.positionIndex === 1) return '📍 关部采集完成！请继续向小臂方向移动至「尺」脉位置'
-  return '📍 尺部采集完成！全部采集完毕'
+  if (props.positionIndex === 0) return '📍 寸部完成，将笔向小臂方向移动约一指宽至关部'
+  if (props.positionIndex === 1) return '📍 关部完成，继续向小臂方向移动约一指宽至尺部'
+  return '📍 尺部完成，全部采集完毕'
 })
 
 const analysisDimensions = computed(() => {
@@ -331,7 +380,11 @@ function pushPulseValue(value: number): void {
   if (pulseBuffer.length > MAX_BUFFER) pulseBuffer.shift()
 }
 
-defineExpose({ pushPulseValue })
+function clearBuffer(): void {
+  pulseBuffer.length = 0
+}
+
+defineExpose({ pushPulseValue, clearBuffer })
 
 function drawWaveform(): void {
   const canvas = waveformCanvas.value

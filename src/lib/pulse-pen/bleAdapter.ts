@@ -34,6 +34,27 @@ function bufferSourceToBytes(buffer: BufferSource): number[] {
   return Array.from(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
 }
 
+// ── 原始 BLE 通知计数（诊断用）──────────────────────────────
+// 用于对比 SDK 解析出的帧数，判断是否存在 BLE 传输丢帧
+let _rawNotifyCount = 0
+let _rawNotifyBytes = 0
+let _notifyTimestamps: number[] = []  // 记录最近的通知时间戳（检测间隔）
+let _gapCount = 0  // 检测到的时间间隔异常次数
+let _lastNotifyTime = 0
+
+export function getRawNotifyStats(): { count: number; bytes: number; gaps: number } {
+  return { count: _rawNotifyCount, bytes: _rawNotifyBytes, gaps: _gapCount }
+}
+
+export function resetRawNotifyStats(): void {
+  _rawNotifyCount = 0
+  _rawNotifyBytes = 0
+  _notifyTimestamps = []
+  _gapCount = 0
+  _lastNotifyTime = 0
+  console.log('[BLE 垫片] 📊 统计已重置')
+}
+
 // ── 模拟 Web Bluetooth 对象 ──────────────────────────────────
 
 class BleCharacteristic extends EventTarget {
@@ -57,8 +78,40 @@ class BleCharacteristic extends EventTarget {
     if (this._notifying) return this
 
     // 注册 Tauri 事件监听
-    const unlisten = await listen<number[]>('ble-notify', (event) => {
-      this.value = bytesToDataView(event.payload)
+    const charUuid = this.uuid  // 捕获 UUID 用于过滤
+    const unlisten = await listen<{ uuid: string; value: number[] } | number[]>('ble-notify', (event) => {
+      // 支持两种格式：带 UUID 过滤的对象 或 纯 number[]（向后兼容）
+      const payload = event.payload
+      let bytes: number[]
+      if (Array.isArray(payload)) {
+        bytes = payload
+      } else if (payload && typeof payload === 'object' && 'value' in payload) {
+        bytes = payload.value
+      } else {
+        return
+      }
+
+      _rawNotifyCount++
+      _rawNotifyBytes += bytes.length
+
+      // ── 时序诊断：检测通知间隔异常 ──
+      const now = performance.now()
+      if (_lastNotifyTime > 0) {
+        const gap = now - _lastNotifyTime
+        if (gap > 100) {
+          // 超过 100ms 的间隔可能是通知丢失（正常 BLE 通知间隔 7.5-30ms）
+          _gapCount++
+          console.warn(`[BLE 垫片] ⚠️ 通知间隔异常: ${gap.toFixed(1)}ms (第 ${_rawNotifyCount} 条, 第 ${_gapCount} 次间隔异常)`)
+        }
+      }
+      _lastNotifyTime = now
+
+      // 每 200 条通知输出一次统计
+      if (_rawNotifyCount % 200 === 0) {
+        console.log(`[BLE 垫片] 📊 统计: 通知=${_rawNotifyCount}, 字节=${_rawNotifyBytes}, 间隔异常=${_gapCount}, 平均字节/通知=${(_rawNotifyBytes / _rawNotifyCount).toFixed(1)}`)
+      }
+
+      this.value = bytesToDataView(bytes)
       this.dispatchEvent(new Event('characteristicvaluechanged'))
     })
 

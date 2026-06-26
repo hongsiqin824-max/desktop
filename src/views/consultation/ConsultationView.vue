@@ -187,6 +187,52 @@ watch(() => pulsePen.latestPulseValue.value, (v) => {
   if (v) pulseOverlayRef.value?.pushPulseValue(v)
 })
 
+// 阶段切换时清除 Canvas 波形缓冲区（避免旧数据残留）+ 语音播报提示
+watch(() => pulsePen.phase.value, (newPhase) => {
+  pulseOverlayRef.value?.clearBuffer()
+
+  // 语音播报：寻脉阶段（按部位区分）
+  if (newPhase === 'searching') {
+    const pos = pulsePen.currentPosition.value
+    if (pos === 'cun') ttsStore.speakSync('将笔轻放在寸部，找到脉搏最强的位置', 'nurse', () => {})
+    else if (pos === 'guan') ttsStore.speakSync('向小臂方向移动约一指宽至关部，找到脉搏最强的位置', 'nurse', () => {})
+    else if (pos === 'chi') ttsStore.speakSync('继续向小臂移动约一指宽至尺部，找到脉搏最强的位置', 'nurse', () => {})
+  }
+
+  // 语音播报：部位完成 → 移动提示
+  if (newPhase === 'position_done') {
+    const idx = pulsePen.positionIndex.value
+    if (idx === 0) ttsStore.speakSync('寸部完成，将笔向小臂方向移动约一指宽至关部', 'nurse', () => {})
+    else if (idx === 1) ttsStore.speakSync('关部完成，继续向小臂方向移动约一指宽至尺部', 'nurse', () => {})
+    else ttsStore.speakSync('尺部完成，全部采集完毕', 'nurse', () => {})
+  }
+})
+
+// 语音播报：压力档过渡提示
+watch(() => pulsePen.lastCompletedPressure.value, (completed) => {
+  if (!completed || pulsePen.phase.value !== 'collecting') return
+  if (completed === 'float') {
+    ttsStore.speakSync('浮取完成，请稍微加大力度进入中取', 'nurse', () => {})
+  } else if (completed === 'middle') {
+    ttsStore.speakSync('中取完成，请继续加大力度进入沉取', 'nurse', () => {})
+  }
+})
+
+// 语音播报：首次进入各压力档采集
+let _spokenPressures = new Set<string>()
+watch(() => pulsePen.currentPressure.value, (pressure) => {
+  if (!pressure || pulsePen.phase.value !== 'collecting') return
+  if (_spokenPressures.has(pressure)) return
+  _spokenPressures.add(pressure)
+  if (pressure === 'float') ttsStore.speakSync('浮取采集中，轻搭笔头，不要用力', 'nurse', () => {})
+  else if (pressure === 'middle') ttsStore.speakSync('中取采集中，保持中等力度按压', 'nurse', () => {})
+  else if (pressure === 'deep') ttsStore.speakSync('沉取采集中，保持较重力度按压', 'nurse', () => {})
+})
+// 部位切换时重置已播报的压力档
+watch(() => pulsePen.currentPosition.value, () => {
+  _spokenPressures.clear()
+})
+
 // 脉诊采集完成 → 执行匹配 + 关闭浮层 + 跳转
 watch(pulsePen.isDone, async (done) => {
   if (!done || !isCapturing.value) return
@@ -582,7 +628,9 @@ const clearTimers = () => {
 }
 
 /** 重置问诊状态并返回首页 */
-const resetAndGoHome = () => {
+const resetAndGoHome = async () => {
+  // 确保脉诊笔 BLE 断开完成后再导航（防止下次进入时扫描不到设备）
+  await pulsePen.cancel()
   clearTimers()
   // 重置问诊 store 数据
   consultationStore.reset()
@@ -2649,9 +2697,11 @@ onUnmounted(() => {
               :device-status="pulsePen.deviceStatus.value"
               :current-analysis="pulsePen.currentAnalysis.value"
               :search-warning="pulsePen.searchWarning.value"
+              :last-completed-pressure="pulsePen.lastCompletedPressure.value"
               @confirm="pulsePen.confirmPosition()"
               @cancel="handlePulseCancel()"
               @retry="pulsePen.retry()"
+              @skip-position="pulsePen.skipPosition()"
             />
           </template>
           <!-- 舌象采集（非脉诊）：保持原有加载状态 -->
