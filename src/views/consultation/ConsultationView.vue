@@ -187,6 +187,7 @@ const { status: speechStatus, errorMessage: speechError, transcript: speechTrans
 const showVoiceToast = ref(false)
 const showErrorToast = ref(false)
 const errorToastText = ref('')
+const voiceToastText = ref('正在聆听，请说话…') // 语音录音提示文本（支持动态更新）
 // 键盘快捷键操作反馈 toast（蓝色，区别于红色错误 toast）
 const showActionToast = ref(false)
 const actionToastText = ref('')
@@ -194,6 +195,13 @@ let actionToastTimer: ReturnType<typeof setTimeout> | null = null
 const isSkipping = ref(false) // 用户主动跳过朗读时设为 true，阻止 onError toast 弹出
 let lastDoctorFullText = '' // 记录当前正在朗读的医生完整文本，跳过时用于强制补全文字
 let interpretationAbortController: AbortController | null = null // Phase 2 LLM 解读请求控制器
+
+// ── 空格键长按录音状态（独立于按钮 toggle 模式）──────────────────
+const isLongPressRecording = ref(false) // 是否正在长按录音
+let recordingDuration = 0 // 录音时长计数器（秒）
+let durationTimer: number | null = null // 每秒更新定时器
+let recordingTimeoutTimer: number | null = null // 60 秒超时定时器
+let recordingPromise: Promise<string> | null = null // 存储 startAndWait 的 promise
 
 // ── 异常回答关键词 ────────────────────────────────────────────
 const { refusal: REFUSAL_KEYWORDS, uncertain: UNCERTAIN_KEYWORDS, guarantee: GUARANTEE_KEYWORDS, severityMild: SEVERITY_MILD_KEYWORDS, severityModerate: SEVERITY_MODERATE_KEYWORDS, severitySevere: SEVERITY_SEVERE_KEYWORDS } = KEYWORD_CONFIG
@@ -448,8 +456,8 @@ const handleArrowDown = async () => {
 
 /** 键盘快捷键主入口 */
 const handleKeyDown = (e: KeyboardEvent) => {
-  // 只响应方向键
-  if (e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+  // 只响应方向键和空格键
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== ' ') return
 
   // 焦点在输入框时不响应（避免干扰文字输入）
   const tag = (document.activeElement as HTMLElement)?.tagName
@@ -461,7 +469,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   // LLM 处理中不响应
   if (llmIsLoading.value) return
 
-  // 自动过渡步骤中，只允许 → 跳过 TTS，阻止 ↑↓
+  // 自动过渡步骤中，只允许 → 跳过 TTS，阻止 ↑↓ 和空格
   if (isAutoTransition.value && e.key !== 'ArrowRight') return
 
   switch (e.key) {
@@ -477,6 +485,34 @@ const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault()
       handleArrowDown()
       break
+    case ' ': // 空格键长按录音
+      e.preventDefault() // 阻止页面滚动
+
+      // 如果还没开始录音，启动录音
+      // 使用 isLongPressRecording 防止按键重复事件触发多次
+      if (!isLongPressRecording.value) {
+        startVoiceRecording()
+      }
+      break
+  }
+}
+
+/** 键盘松开事件处理器（用于空格键长按录音） */
+const handleKeyUp = (e: KeyboardEvent) => {
+  // 只响应空格键
+  if (e.key !== ' ') return
+
+  // 如果正在长按录音，停止录音
+  if (isLongPressRecording.value) {
+    e.preventDefault()
+    stopVoiceRecording()
+  }
+}
+
+/** 窗口失焦保护：强制停止录音 */
+const handleWindowBlur = () => {
+  if (isLongPressRecording.value) {
+    stopVoiceRecording()
   }
 }
 
@@ -2121,6 +2157,8 @@ const onMicClick = async () => {
   if (speechStatus.value === 'listening') { showVoiceToast.value = false; stopSpeech(); return }
   if (speechStatus.value === 'error') { showVoiceToast.value = false; showErrorToast.value = false; stopSpeech(); return }
 
+  // 重置 toast 文本为默认值（兼容长按模式可能修改过的文本）
+  voiceToastText.value = '正在聆听，请说话…'
   showVoiceToast.value = true; showErrorToast.value = false
   const text = await startSpeechAndWait(); showVoiceToast.value = false
 
@@ -2131,6 +2169,116 @@ const onMicClick = async () => {
   if (text) { inputText.value = text; onSubmitText(text) }
 }
 
+/**
+ * 启动语音录音（空格键长按模式）
+ * 与 onMicClick 的 toggle 模式独立，专门处理 press-and-hold 交互
+ */
+const startVoiceRecording = () => {
+  // 防护条件 1：输入框聚焦时不响应
+  const tag = (document.activeElement as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return
+
+  // 防护条件 2：采集阶段不响应
+  if (isCapturing.value) return
+
+  // 防护条件 3：LLM 处理中不响应
+  if (llmIsLoading.value) return
+
+  // 防护条件 4：终态步骤不响应
+  if (currentStep.value.isEnd) return
+
+  // 防护条件 5：TTS 播报时不响应（用户确认的需求）
+  if (ttsStore.isSpeaking) return
+
+  // 防护条件 6：自动过渡步骤不响应
+  if (isAutoTransition.value) return
+
+  // 防护条件 7：已经在录音（按钮 toggle 模式或长按模式）
+  if (speechStatus.value !== 'idle') return
+
+  // 停止 TTS（以防万一）
+  ttsStore.stop()
+
+  // 设置录音状态
+  isLongPressRecording.value = true
+  showVoiceToast.value = true
+  showErrorToast.value = false
+
+  // 初始化录音时长显示
+  recordingDuration = 0
+  voiceToastText.value = '🎙️ 正在录音... 0秒'
+
+  // 启动每秒更新定时器
+  durationTimer = window.setInterval(() => {
+    recordingDuration++
+    voiceToastText.value = `🎙️ 正在录音... ${recordingDuration}秒`
+  }, 1000)
+
+  // 启动 60 秒超时保护
+  recordingTimeoutTimer = window.setTimeout(() => {
+    if (isLongPressRecording.value) {
+      stopVoiceRecording()
+      errorToastText.value = '录音时长已达 60 秒上限，自动停止'
+      showErrorToast.value = true
+      setTimeout(() => { showErrorToast.value = false }, 3000)
+    }
+  }, 60000)
+
+  // 启动语音识别（不等待结果，存储 promise）
+  recordingPromise = startSpeechAndWait()
+}
+
+/**
+ * 停止语音录音并提交结果（空格键长按模式）
+ */
+const stopVoiceRecording = async () => {
+  // 如果已经不在录音状态，直接返回（防止重复调用）
+  if (!isLongPressRecording.value) return
+
+  // 清除定时器
+  if (durationTimer) {
+    clearInterval(durationTimer)
+    durationTimer = null
+  }
+  if (recordingTimeoutTimer) {
+    clearTimeout(recordingTimeoutTimer)
+    recordingTimeoutTimer = null
+  }
+
+  // 重置录音状态
+  isLongPressRecording.value = false
+
+  // 更新 toast 为"识别中"
+  voiceToastText.value = '⏳ 识别中...'
+
+  // 停止录音
+  stopSpeech()
+
+  // 等待识别结果
+  const text = await recordingPromise
+  recordingPromise = null
+
+  // 隐藏录音 toast
+  showVoiceToast.value = false
+
+  // 处理识别结果
+  if (speechError.value) {
+    // 显示错误 toast
+    showErrorToast.value = true
+    errorToastText.value = speechError.value || '语音识别失败，请重试'
+    setTimeout(() => {
+      showErrorToast.value = false
+    }, 3000)
+    return
+  }
+
+  // 识别成功，自动提交
+  if (text) {
+    inputText.value = text
+    onSubmitText(text)
+  }
+}
+
 watch(speechTranscript, (val) => { if (speechStatus.value === 'listening' && val) inputText.value = val })
 
 // ── 初始化 ───────────────────────────────────────────────────
@@ -2138,6 +2286,8 @@ onMounted(async () => {
   consultationStore.startConsultation()
   // 注册键盘快捷键监听
   document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('keyup', handleKeyUp) // 空格键松开检测
+  window.addEventListener('blur', handleWindowBlur) // 窗口失焦保护
   await doctorSay(`${userName.value}您好，我是您的中医师 🌿 接下来我会帮您了解一下身体状况，请放松心情～`, 800)
   await goToStep('initial')
 })
@@ -2159,6 +2309,11 @@ onUnmounted(() => {
   stopSpeech()
   // 清除键盘快捷键监听
   document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('keyup', handleKeyUp)
+  window.removeEventListener('blur', handleWindowBlur)
+  // 清理长按录音定时器
+  if (durationTimer) { clearInterval(durationTimer); durationTimer = null }
+  if (recordingTimeoutTimer) { clearTimeout(recordingTimeoutTimer); recordingTimeoutTimer = null }
   // 清理 action toast 定时器
   if (actionToastTimer) { clearTimeout(actionToastTimer); actionToastTimer = null }
 })
@@ -2444,7 +2599,7 @@ onUnmounted(() => {
         <div class="wave-bar"></div>
         <div class="wave-bar"></div>
       </div>
-      <span>正在聆听，请说话…</span>
+      <span>{{ voiceToastText }}</span>
     </div>
 
     <!-- 错误提示 -->
