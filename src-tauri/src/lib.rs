@@ -25,6 +25,15 @@ pub fn run() {
             ble::ble_disconnect,
         ])
         .setup(|app| {
+            // ── 加载 .env.local 环境变量 ──
+            // Vite 只给前端注入 .env.local 中的变量；Rust 后端进程需要手动加载。
+            // CARGO_MANIFEST_DIR 指向 src-tauri/，其上级即项目根目录。
+            // 打包后无此变量，静默忽略（生产环境由系统环境变量提供）。
+            if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                let env_path = std::path::Path::new(&manifest_dir).join("../.env.local");
+                let _ = dotenvy::from_path(&env_path);
+            }
+
             // Windows WebView2：授权摄像头/麦克风权限
             // wry 只自动处理剪贴板权限，摄像头/麦克风需要手动授权
             #[cfg(target_os = "windows")]

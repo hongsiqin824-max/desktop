@@ -10,6 +10,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const isTauri = !!process.env.TAURI_DEV
 
+  // 后端地址（从 .env.local 读取，有默认值兜底）
+  const backendUrl = env.VITE_BACKEND_URL || 'http://39.106.163.181:8092'
+  const tongueAiUrl = env.VITE_TONGUE_AI_URL || 'https://aitongue.maizhiyu.com'
+
   return {
     plugins: [
       vue(templateCompilerOptions),
@@ -90,7 +94,7 @@ export default defineConfig(({ mode }) => {
         },
         // ── 后端业务接口代理（内网开发地址）──
         '/mp': {
-          target: 'http://39.106.163.181:8092',
+          target: backendUrl,
           changeOrigin: true,
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
@@ -100,7 +104,7 @@ export default defineConfig(({ mode }) => {
         },
         // ── 答案保存接口代理 ──
         '/answersheet': {
-          target: 'http://39.106.163.181:8092',
+          target: backendUrl,
           changeOrigin: true,
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
@@ -110,7 +114,7 @@ export default defineConfig(({ mode }) => {
         },
         // ── 后端认证接口代理（验证码 + 登录）──
         '/verifyCode': {
-          target: 'http://39.106.163.181:8092',
+          target: backendUrl,
           changeOrigin: true,
           cookieDomainRewrite: '',
           configure: (proxy) => {
@@ -120,7 +124,7 @@ export default defineConfig(({ mode }) => {
           },
         },
         '/doLogin': {
-          target: 'http://39.106.163.181:8092',
+          target: backendUrl,
           changeOrigin: true,
           cookieDomainRewrite: '',
           configure: (proxy) => {
@@ -131,7 +135,7 @@ export default defineConfig(({ mode }) => {
         },
         // ── 后端问卷模型接口代理──
         '/questionModel': {
-          target: 'http://39.106.163.181:8092',
+          target: backendUrl,
           changeOrigin: true,
           cookieDomainRewrite: '',
           configure: (proxy) => {
@@ -140,9 +144,9 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
-        // ── 第三方舌象 AI 分析服务（脉至语）──
+        // ── 第三方舌象 AI 分析服务 ──
         '/tongue-ai': {
-          target: 'https://aitongue.maizhiyu.com',
+          target: tongueAiUrl,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/tongue-ai/, '/api/app'),
         },

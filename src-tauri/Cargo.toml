@@ -31,6 +31,9 @@ tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
 tungstenite = "0.29"
 futures-util = "0.3"
 
+# 环境变量加载（从 .env.local 读取敏感配置，避免用户手动 export）
+dotenvy = "0.15"
+
 # BLE 蓝牙（脉诊笔设备通信）
 btleplug = "0.11"
 uuid = "1"
