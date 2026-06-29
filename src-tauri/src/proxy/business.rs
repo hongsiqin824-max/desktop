@@ -1,5 +1,5 @@
 // 后端业务接口通用代理：将 /mp/* 请求透传到后端服务器
-// 前端 → Rust 代理 → 后端 (39.106.163.181:8092) → 原样返回
+// 前端 → Rust 代理 → 后端 (BACKEND_BASE_URL) → 原样返回
 //
 // 支持 GET 和 POST 两种方法：
 //   - GET:  用于 getDigitalHumanQuestionsByModel（获取舌脉问题列表）
@@ -17,9 +17,6 @@ use std::collections::HashMap;
 
 use super::AppState;
 
-/// 后端业务接口地址
-const BIZ_UPSTREAM: &str = "http://39.106.163.181:8092";
-
 // ── GET 代理 ────────────────────────────────────────────────────
 // 用于：getDigitalHumanQuestionsByModel 等查询类接口
 // GET /mp/{*path}?query_params...
@@ -31,7 +28,8 @@ pub async fn proxy_get(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // 拼接 URL（包含路径 + 查询参数）
-    let base_url = format!("{}/mp/{}", BIZ_UPSTREAM, path);
+    let upstream = &state.backend_url;
+    let base_url = format!("{}/mp/{}", upstream, path);
     let url = if params.is_empty() {
         base_url
     } else {
@@ -86,9 +84,10 @@ pub async fn proxy_post(
     Path(path): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let url = format!("{}/mp/{}", BIZ_UPSTREAM, path);
+    let upstream = &state.backend_url;
+    let url = format!("{}/mp/{}", upstream, path);
 
-    println!("[业务代理] POST {} → {}", url, BIZ_UPSTREAM);
+    println!("[业务代理] POST {} → {}", url, upstream);
 
     // 构建请求并注入 JSESSIONID Cookie
     let mut req = state
@@ -140,9 +139,10 @@ pub async fn proxy_post_answersheet(
     Path(path): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let url = format!("{}/answersheet/{}", BIZ_UPSTREAM, path);
+    let upstream = &state.backend_url;
+    let url = format!("{}/answersheet/{}", upstream, path);
 
-    println!("[答案代理] POST {} → {}", url, BIZ_UPSTREAM);
+    println!("[答案代理] POST {} → {}", url, upstream);
 
     // 构建请求并注入 JSESSIONID Cookie
     let mut req = state

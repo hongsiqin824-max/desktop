@@ -3,9 +3,6 @@ mod ble;
 
 use tauri::Manager;
 
-// 阿里云百炼 API Key（打包进二进制，前端不可见）
-const API_KEY: &str = "sk-REDACTED-REMOVED-FOR-SECURITY";
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -56,10 +53,10 @@ pub fn run() {
                 }
             }
 
-            // 启动本地代理服务器（LLM/ASR/TTS）
-            let api_key = API_KEY.to_string();
+            // 启动本地代理服务器（LLM/ASR/TTS）— 从环境变量读取敏感配置
+            let config = proxy::ProxyConfig::from_env();
             tauri::async_runtime::spawn(async move {
-                proxy::start_proxy_server(api_key).await;
+                proxy::start_proxy_server(config).await;
             });
 
             // 开发模式下打开 DevTools 方便调试

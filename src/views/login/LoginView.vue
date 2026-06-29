@@ -13,7 +13,7 @@ const sessionStore = useSessionStore()
 
 // ── 表单状态 ────────────────────────────────────────────
 const username = ref('admin')
-const password = ref('REDACTED')
+const password = ref('wxjk2024')
 const captchaCode = ref('')
 
 // ── 验证码图片 ──────────────────────────────────────────

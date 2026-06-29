@@ -1,4 +1,4 @@
-// 第三方舌象 AI 分析代理：转发请求到脉至语 (aitongue.maizhiyu.com)
+// 第三方舌象 AI 分析代理：转发请求到舌象 AI 服务 (TONGUE_AI_URL)
 //
 // Tauri 模式下前端无法直接跨域请求第三方 HTTPS API，
 // 需要通过 Rust 代理中转。浏览器开发模式走 Vite 代理，不经过这里。
@@ -17,9 +17,6 @@ use axum::{
 use serde_json::Value;
 
 use super::AppState;
-
-/// 第三方舌象 AI 服务地址
-const TONGUE_AI_UPSTREAM: &str = "https://aitongue.maizhiyu.com";
 
 // ── 图片上传代理 ────────────────────────────────────────────────
 // POST /tongue-ai/uploadImage
@@ -40,7 +37,8 @@ pub async fn proxy_upload_image(
     headers: axum::http::HeaderMap,  // 提取 HTTP headers
     mut multipart: Multipart,
 ) -> Result<Response, (StatusCode, String)> {
-    let url = format!("{}/api/app/uploadImage", TONGUE_AI_UPSTREAM);
+    let upstream = &state.tongue_ai_url;
+    let url = format!("{}/api/app/uploadImage", upstream);
     println!("[舌象AI代理] POST {} (multipart 转发)", url);
 
     // 从 HTTP headers 中提取 appId 和 timestamp
@@ -146,7 +144,8 @@ pub async fn proxy_get_report(
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let url = format!("{}/api/app/getReport", TONGUE_AI_UPSTREAM);
+    let upstream = &state.tongue_ai_url;
+    let url = format!("{}/api/app/getReport", upstream);
     println!("[舌象AI代理] POST {} (JSON 转发)", url);
 
     // 提取前端传递的 appId 和 timestamp 请求头

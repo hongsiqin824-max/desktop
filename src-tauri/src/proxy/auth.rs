@@ -18,9 +18,6 @@ use std::collections::HashMap;
 
 use super::AppState;
 
-/// 后端基础地址
-const BACKEND_BASE: &str = "http://39.106.163.181:8092";
-
 // ── 验证码获取 ──────────────────────────────────────────
 // GET /verifyCode
 // 后端返回图片二进制流 + Set-Cookie: JSESSIONID=xxx
@@ -29,7 +26,8 @@ const BACKEND_BASE: &str = "http://39.106.163.181:8092";
 pub async fn verify_code(
     State(state): State<AppState>,
 ) -> Result<Response, (StatusCode, String)> {
-    let url = format!("{}/verifyCode", BACKEND_BASE);
+    let backend = &state.backend_url;
+    let url = format!("{}/verifyCode", backend);
     println!("[认证代理] GET {}", url);
 
     // 如果已有 JSESSIONID，带上它（保持同一 session）
@@ -86,7 +84,8 @@ pub async fn do_login(
     State(state): State<AppState>,
     body: Bytes,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let url = format!("{}/doLogin", BACKEND_BASE);
+    let backend = &state.backend_url;
+    let url = format!("{}/doLogin", backend);
     println!("[认证代理] POST {}", url);
 
     // 带上已存储的 JSESSIONID（和验证码同一个 session）
@@ -152,10 +151,11 @@ pub async fn proxy_question_model(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // 拼接基础 URL
+    let backend = &state.backend_url;
     let base_url = if path.is_empty() {
-        format!("{}/questionModel", BACKEND_BASE)
+        format!("{}/questionModel", backend)
     } else {
-        format!("{}/questionModel/{}", BACKEND_BASE, path)
+        format!("{}/questionModel/{}", backend, path)
     };
 
     // 将查询参数重新拼接到 URL（axum 的 {*path} 不包含查询参数，需手动恢复）

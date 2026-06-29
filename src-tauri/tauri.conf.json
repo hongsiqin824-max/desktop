@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.tcm.consultation",
   "build": {
-    "beforeDevCommand": "TAURI_DEV=1 npm run dev",
+    "beforeDevCommand": "npx cross-env TAURI_DEV=1 npm run dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"

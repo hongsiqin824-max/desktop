@@ -29,7 +29,11 @@ if (existsSync(envLocalPath)) {
   if (match) apiKey = match[1].trim().replace(/^["']|["']$/g, '')
 }
 if (!apiKey) apiKey = process.env.VITE_LLM_API_KEY || ''
-if (!apiKey) apiKey = 'sk-REDACTED-REMOVED-FOR-SECURITY'
+if (!apiKey) apiKey = process.env.DASHSCOPE_API_KEY || ''
+if (!apiKey) {
+  console.error('❌ 未找到 API Key。请设置环境变量 DASHSCOPE_API_KEY 或在 .env.local 中配置 VITE_LLM_API_KEY')
+  process.exit(1)
+}
 
 // ── 加载测试数据 ──
 const testDataPath = join(__dirname, 'test-data.json')
